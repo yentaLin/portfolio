@@ -1,4 +1,5 @@
 ---
+import { url } from '../lib/url';
 import Base from '../layouts/Base.astro';
 ---
 
@@ -7,7 +8,7 @@ import Base from '../layouts/Base.astro';
     <p class="eyebrow">404 / PAGE NOT FOUND</p>
     <h1>Nothing on this page yet.</h1>
     <p>The link may have changed, or this page does not exist.</p>
-    <a class="text-link" href="/">
+    <a class="text-link" href={url('/')}>
       Back home →
     </a>
   </div>

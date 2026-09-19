@@ -1,4 +1,5 @@
 ---
+import { url } from '../lib/url';
 import Base from '../layouts/Base.astro';
 import SocialLinks from '../components/SocialLinks.astro';
 import ProjectList from '../components/ProjectList.astro';
@@ -67,7 +68,7 @@ const articles = (await getWriting()).slice(0, 3);
       <h2>
         <span class="mono section-number">02 /</span> Selected projects
       </h2>
-      <a class="text-link" href="/projects/">
+      <a class="text-link" href={url('/projects/')}>
         All projects <span aria-hidden="true">↗</span>
       </a>
     </div>
@@ -78,7 +79,7 @@ const articles = (await getWriting()).slice(0, 3);
       <h2>
         <span class="mono section-number">03 /</span> Recent writing
       </h2>
-      <a class="text-link" href="/writing/">
+      <a class="text-link" href={url('/writing/')}>
         Writing index <span aria-hidden="true">↗</span>
       </a>
     </div>
@@ -111,7 +112,7 @@ const articles = (await getWriting()).slice(0, 3);
     </div>
     <div>
       <p>{site.background}</p>
-      <a class="text-link" href="/about/">
+      <a class="text-link" href={url('/about/')}>
         More about me ↗
       </a>
     </div>

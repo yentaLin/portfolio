@@ -1,4 +1,5 @@
 ---
+import { url } from '../../lib/url';
 import { render } from 'astro:content';
 import Document from '../../layouts/Document.astro';
 import { getProjects, getWriting } from '../../lib/content';
@@ -38,11 +39,11 @@ const related = (await getWriting()).filter(
       <section class="related">
         <h2>Related writing</h2>
         {related.map((a) => (
-          <a href={`/writing/${a.id}/`}>{a.data.title} →</a>
+          <a href={url(`/writing/${a.id}/`)}>{a.data.title} →</a>
         ))}
       </section>
     )}
-    <a class="back-link" href="/projects/">
+    <a class="back-link" href={url('/projects/')}>
       ← Back to all projects
     </a>
   </div>

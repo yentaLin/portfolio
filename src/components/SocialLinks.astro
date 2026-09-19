@@ -1,4 +1,5 @@
 ---
+import { url } from '../lib/url';
 import { site } from '../data/site';
 ---
 
@@ -12,7 +13,7 @@ import { site } from '../data/site';
   <a href={`mailto:${site.email}`}>
     Email <span aria-hidden="true">↗</span>
   </a>
-  <a href="/resume.pdf">
+  <a href={url('/resume.pdf')}>
     Resume <span aria-hidden="true">↗</span>
   </a>
 </div>

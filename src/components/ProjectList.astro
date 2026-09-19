@@ -1,4 +1,5 @@
 ---
+import { url } from '../lib/url';
 import type { CollectionEntry } from 'astro:content';
 interface Props {
   projects: CollectionEntry<'projects'>[];
@@ -8,7 +9,7 @@ const { projects } = Astro.props;
 
 <div class="project-list">
   {projects.map((project, index) => (
-    <a class="project-row" href={`/projects/${project.id}/`}>
+    <a class="project-row" href={url(`/projects/${project.id}/`)}>
       <span class="project-index mono">
         {String(index + 1).padStart(2, '0')}
       </span>

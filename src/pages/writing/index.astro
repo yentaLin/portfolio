@@ -1,4 +1,5 @@
 ---
+import { url } from '../../lib/url';
 import Base from '../../layouts/Base.astro';
 import ArticleList from '../../components/ArticleList.astro';
 import { getWriting } from '../../lib/content';
@@ -36,7 +37,8 @@ const tags = [...new Set(articles.flatMap((a) => a.data.tags))].sort();
       <p id="filter-status" class="sr-only" aria-live="polite"></p>
       <ArticleList articles={articles} />
       <p id="no-results" hidden>
-        No articles with this tag yet. <a href="/writing/">View all articles</a>
+        No articles with this tag yet.{' '}
+        <a href={url('/writing/')}>View all articles</a>
       </p>
     </>
   ) : (
@@ -48,7 +50,7 @@ const tags = [...new Set(articles.flatMap((a) => a.data.tags))].sort();
         <br />
         take a look at some of my engineering projects.
       </p>
-      <a class="text-link" href="/projects/">
+      <a class="text-link" href={url('/projects/')}>
         Explore projects ↗
       </a>
     </div>

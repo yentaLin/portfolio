@@ -1,4 +1,5 @@
 ---
+import { url } from '../../lib/url';
 import { render } from 'astro:content';
 import Document from '../../layouts/Document.astro';
 import {
@@ -47,23 +48,23 @@ const meta = [
       <section class="related">
         <h2>Related projects</h2>
         {related.map((p) => (
-          <a href={`/projects/${p.id}/`}>{p.data.title} →</a>
+          <a href={url(`/projects/${p.id}/`)}>{p.data.title} →</a>
         ))}
       </section>
     )}
     <nav class="article-pagination" aria-label="More articles">
       {articles[index + 1] && (
-        <a href={`/writing/${articles[index + 1].id}/`}>
+        <a href={url(`/writing/${articles[index + 1].id}/`)}>
           ← Previous: {articles[index + 1].data.title}
         </a>
       )}
       {articles[index - 1] && (
-        <a href={`/writing/${articles[index - 1].id}/`}>
+        <a href={url(`/writing/${articles[index - 1].id}/`)}>
           Next: {articles[index - 1].data.title} →
         </a>
       )}
     </nav>
-    <a class="back-link" href="/writing/">
+    <a class="back-link" href={url('/writing/')}>
       ← Back to writing
     </a>
   </div>
