@@ -1,0 +1,70 @@
+---
+import { render } from 'astro:content';
+import Document from '../../layouts/Document.astro';
+import {
+  getWriting,
+  getProjects,
+  formatDate,
+  readingTime,
+} from '../../lib/content';
+export async function getStaticPaths() {
+  return (await getWriting()).map((article) => ({
+    params: { id: article.id },
+    props: { article },
+  }));
+}
+const { article } = Astro.props;
+const { Content, headings } = await render(article);
+const articles = await getWriting();
+const index = articles.findIndex((a) => a.id === article.id);
+const related = (await getProjects()).filter(
+  (p) =>
+    article.data.relatedProjects.some((r) => r.id === p.id) ||
+    p.data.relatedWriting.some((r) => r.id === article.id),
+);
+const meta = [
+  formatDate(article.data.date),
+  `${readingTime(article.body)} min read`,
+  article.data.updated ? `Updated ${formatDate(article.data.updated)}` : '',
+]
+  .filter(Boolean)
+  .join(' / ');
+---
+
+<Document
+  title={article.data.title}
+  description={article.data.description}
+  kind="writing"
+  meta={meta}
+  tags={article.data.tags}
+  headings={headings}
+  date={article.data.date}
+  updated={article.data.updated}
+>
+  <Content />
+  <div slot="after">
+    {related.length > 0 && (
+      <section class="related">
+        <h2>Related projects</h2>
+        {related.map((p) => (
+          <a href={`/projects/${p.id}/`}>{p.data.title} →</a>
+        ))}
+      </section>
+    )}
+    <nav class="article-pagination" aria-label="More articles">
+      {articles[index + 1] && (
+        <a href={`/writing/${articles[index + 1].id}/`}>
+          ← Previous: {articles[index + 1].data.title}
+        </a>
+      )}
+      {articles[index - 1] && (
+        <a href={`/writing/${articles[index - 1].id}/`}>
+          Next: {articles[index - 1].data.title} →
+        </a>
+      )}
+    </nav>
+    <a class="back-link" href="/writing/">
+      ← Back to writing
+    </a>
+  </div>
+</Document>

@@ -1,0 +1,152 @@
+---
+import '../styles/global.css';
+import { site } from '../data/site';
+interface Props {
+  title?: string;
+  description?: string;
+  article?: boolean;
+  date?: Date;
+  updated?: Date;
+}
+const {
+  title,
+  description = site.description,
+  article = false,
+  date,
+  updated,
+} = Astro.props;
+const fullTitle = title ? `${title} — ${site.name}` : site.title;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const nav = [
+  ['/', 'Home'],
+  ['/about/', 'About'],
+  ['/projects/', 'Projects'],
+  ['/writing/', 'Writing'],
+  ['/experience/', 'Experience'],
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={article ? 'article' : 'website'} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content={site.name} />
+    {date && (
+      <meta property="article:published_time" content={date.toISOString()} />
+    )}
+    {updated && (
+      <meta property="article:modified_time" content={updated.toISOString()} />
+    )}
+    <meta name="twitter:card" content="summary" />
+    <meta name="theme-color" content="#f5f7fa" />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="Writing by Yen-Ta Lin"
+      href="/rss.xml"
+    />
+    <script is:inline>
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('theme') || 'light';
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">
+      Skip to content
+    </a>
+    <header class="site-header shell">
+      <a class="wordmark" href="/" aria-label="Yen-Ta Lin Home">
+        <span class="monogram">
+          yl<span>.</span>
+        </span>
+        <span class="wordmark-name">Yen-Ta Lin</span>
+      </a>
+      <div class="header-controls">
+        <nav aria-label="Main navigation">
+          {nav.map(([href, label]) => (
+            <a
+              href={href}
+              aria-current={
+                (
+                  href === '/'
+                    ? Astro.url.pathname === '/'
+                    : Astro.url.pathname.startsWith(href)
+                )
+                  ? 'page'
+                  : undefined
+              }
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          aria-label="Switch to dark mode"
+          title="Toggle color theme"
+        >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="8" />
+            <path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+    </header>
+    <main id="main" class="shell">
+      <slot />
+    </main>
+    <footer class="site-footer shell">
+      <div>
+        <a href="/" class="footer-name">
+          Yen-Ta Lin<span class="accent">.</span>
+        </a>
+      </div>
+      <div class="footer-right">
+        <a href={site.github}>GitHub ↗</a>
+        <a href="/rss.xml">RSS ↗</a>
+        <span>© {new Date().getFullYear()} Yen-Ta Lin</span>
+      </div>
+    </footer>
+    <script>
+      const button = document.querySelector<HTMLButtonElement>('#theme-toggle');
+      const syncLabel = () =>
+        button?.setAttribute(
+          'aria-label',
+          document.documentElement.dataset.theme === 'dark'
+            ? 'Switch to light mode'
+            : 'Switch to dark mode',
+        );
+      syncLabel();
+      button?.addEventListener('click', () => {
+        const theme =
+          document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        try {
+          localStorage.setItem('theme', theme);
+        } catch {}
+        syncLabel();
+      });
+    </script>
+  </body>
+</html>

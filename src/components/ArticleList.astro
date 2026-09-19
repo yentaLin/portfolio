@@ -1,0 +1,34 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { formatDate, readingTime } from '../lib/content';
+interface Props {
+  articles: CollectionEntry<'writing'>[];
+}
+const { articles } = Astro.props;
+---
+
+<div class="article-list">
+  {articles.map((article) => (
+    <article class="article-row" data-tags={JSON.stringify(article.data.tags)}>
+      <div class="article-date mono">
+        <time datetime={article.data.date.toISOString()}>
+          {formatDate(article.data.date)}
+        </time>
+        <span>{readingTime(article.body)} min read</span>
+      </div>
+      <div>
+        <h3>
+          <a href={`/writing/${article.id}/`}>
+            {article.data.title} <span aria-hidden="true">↗</span>
+          </a>
+        </h3>
+        <p>{article.data.description}</p>
+        <div class="tags">
+          {article.data.tags.map((tag) => (
+            <a href={`/writing/?tag=${encodeURIComponent(tag)}`}>{tag}</a>
+          ))}
+        </div>
+      </div>
+    </article>
+  ))}
+</div>

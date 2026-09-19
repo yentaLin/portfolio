@@ -1,0 +1,49 @@
+---
+import { render } from 'astro:content';
+import Document from '../../layouts/Document.astro';
+import { getProjects, getWriting } from '../../lib/content';
+export async function getStaticPaths() {
+  return (await getProjects()).map((project) => ({
+    params: { id: project.id },
+    props: { project },
+  }));
+}
+const { project } = Astro.props;
+const { Content, headings } = await render(project);
+const related = (await getWriting()).filter(
+  (a) =>
+    project.data.relatedWriting.some((r) => r.id === a.id) ||
+    a.data.relatedProjects.some((r) => r.id === project.id),
+);
+---
+
+<Document
+  title={project.data.title}
+  description={project.data.description}
+  kind="projects"
+  meta={[project.data.period, project.data.role].filter(Boolean).join(' / ')}
+  tags={project.data.tags}
+  headings={headings}
+>
+  <Content />
+  <div slot="after">
+    {project.data.links.length > 0 && (
+      <div class="social-links">
+        {project.data.links.map((link) => (
+          <a href={link.url}>{link.label} ↗</a>
+        ))}
+      </div>
+    )}
+    {related.length > 0 && (
+      <section class="related">
+        <h2>Related writing</h2>
+        {related.map((a) => (
+          <a href={`/writing/${a.id}/`}>{a.data.title} →</a>
+        ))}
+      </section>
+    )}
+    <a class="back-link" href="/projects/">
+      ← Back to all projects
+    </a>
+  </div>
+</Document>

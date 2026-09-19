@@ -1,0 +1,50 @@
+---
+import Base from '../../layouts/Base.astro';
+import ProjectList from '../../components/ProjectList.astro';
+import { getProjects } from '../../lib/content';
+import { site } from '../../data/site';
+const projects = await getProjects();
+---
+
+<Base
+  title="Projects"
+  description="Engineering projects in LLM quantization, aerial search and rescue, and embedded vehicle control."
+>
+  <header class="page-heading">
+    <p class="eyebrow">SELECTED ENGINEERING WORK</p>
+    <h1>
+      Projects<span class="accent">.</span>
+    </h1>
+    <p>
+      From a problem to a working system.
+      <br />
+      Implementations, technical decisions, and lessons along the way.
+    </p>
+  </header>
+  <ProjectList projects={projects} />
+  <section class="section">
+    <div class="section-heading">
+      <h2>Open-source explorations</h2>
+      <a class="text-link" href={site.github}>
+        GitHub ↗
+      </a>
+    </div>
+    <p class="muted">
+      Public forks for exploration and experimentation. See each repository for
+      upstream projects and licenses.
+    </p>
+    <div class="repository-list">
+      {site.repositories.map((repo) => (
+        <a href={repo.url}>
+          <div>
+            <h3>
+              {repo.name} <span class="fork-label mono">FORK</span>
+            </h3>
+            <p>{repo.description}</p>
+          </div>
+          <span aria-hidden="true">↗</span>
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,55 @@
+---
+title: 技術文章格式範例
+description: Markdown、數學公式、程式碼與 Mermaid 圖表的寫作範例。這是一份未公開草稿。
+date: 2026-09-19
+updated: 2026-09-19
+tags: [Engineering, Learning Notes]
+category: Learning Notes
+draft: true
+featured: false
+relatedProjects: [llm-quantization]
+---
+
+import Mermaid from '../../src/components/Mermaid.astro';
+
+## 從一個問題開始
+
+這是一份寫作格式範例，不是已發布文章。複製這個檔案、修改 frontmatter 並完成內容後，設定 `draft: false` 即可發布。
+
+支援一般 **Markdown**、[連結](https://www.typescriptlang.org/)、清單與註腳。[^note]
+
+## 程式碼
+
+```python
+def quantize(x, scale, zero_point=0):
+    return (x / scale).round() + zero_point
+```
+
+## 數學公式
+
+行內公式：$e = x - \hat{x}$。
+
+$$
+\mathrm{MSE} = \frac{1}{n}\sum_{i=1}^{n}(x_i - \hat{x}_i)^2
+$$
+
+## 表格與引言
+
+| 概念       | 說明               |
+| ---------- | ------------------ |
+| Scale      | 映射實數範圍的尺度 |
+| Zero point | 零值的整數表示     |
+
+> 清楚記錄測量條件，才能理解數字所代表的範圍。
+
+## Mermaid 圖表
+
+<Mermaid
+  chart={`flowchart LR
+  A[觀察分布] --> B[量化校準]
+  B --> C[評估誤差]
+  C --> A`}
+  caption="量化實驗的迭代流程"
+/>
+
+[^note]: 註腳適合補充不需要中斷正文的說明。

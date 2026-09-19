@@ -1,0 +1,46 @@
+---
+interface Props {
+  chart: string;
+  caption?: string;
+}
+const { chart, caption = 'Technical diagram' } = Astro.props;
+---
+
+<figure class="mermaid-figure">
+  <div
+    class="mermaid-source"
+    data-chart={chart}
+    role="img"
+    aria-label={caption}
+  >
+    <pre>{chart}</pre>
+  </div>
+  <figcaption>{caption}</figcaption>
+</figure>
+<script>
+  const diagrams = document.querySelectorAll<HTMLElement>('.mermaid-source');
+  if (diagrams.length) {
+    const observer = new IntersectionObserver(async (entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      try {
+        const { default: mermaid } = await import('mermaid');
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: 'neutral',
+        });
+        for (const [index, element] of [...diagrams].entries()) {
+          const { svg } = await mermaid.render(
+            `diagram-${index}`,
+            element.dataset.chart || '',
+          );
+          element.innerHTML = svg;
+        }
+      } catch {
+        /* Keep the readable source if rendering is unavailable. */
+      }
+    });
+    diagrams.forEach((element) => observer.observe(element));
+  }
+</script>

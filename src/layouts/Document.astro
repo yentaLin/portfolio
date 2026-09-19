@@ -1,0 +1,91 @@
+---
+import Base from './Base.astro';
+import 'katex/dist/katex.min.css';
+interface Props {
+  title: string;
+  description: string;
+  kind: 'writing' | 'projects';
+  meta: string;
+  tags: string[];
+  headings: { depth: number; slug: string; text: string }[];
+  date?: Date;
+  updated?: Date;
+}
+const { title, description, kind, meta, tags, headings, date, updated } =
+  Astro.props;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+<Base
+  title={title}
+  description={description}
+  article={kind === 'writing'}
+  date={date}
+  updated={updated}
+>
+  <header class="document-heading">
+    <a class="back-link mono" href={`/${kind}/`}>
+      ← {kind === 'writing' ? 'All writing' : 'All projects'}
+    </a>
+    <p class="eyebrow">
+      {kind === 'writing' ? 'FROM THE NOTEBOOK' : 'PROJECT NOTES'}
+    </p>
+    <h1>{title}</h1>
+    <p class="document-description">{description}</p>
+    <p class="document-meta mono">{meta}</p>
+    <div class="tags">
+      {tags.map((tag) =>
+        kind === 'writing' ? (
+          <a href={`/writing/?tag=${encodeURIComponent(tag)}`}>{tag}</a>
+        ) : (
+          <span>{tag}</span>
+        ),
+      )}
+    </div>
+  </header>
+  <div class="document-layout">
+    <article class="prose document-body">
+      <slot />
+    </article>
+    {toc.length > 0 && (
+      <aside class="toc">
+        <details open>
+          <summary class="mono">On this page</summary>
+          <nav aria-label="On this page">
+            {toc.map((heading) => (
+              <a
+                href={`#${heading.slug}`}
+                class:list={{ 'toc-sub': heading.depth === 3 }}
+              >
+                {heading.text}
+              </a>
+            ))}
+          </nav>
+        </details>
+      </aside>
+    )}
+  </div>
+  <div class="document-end">
+    <slot name="after" />
+  </div>
+</Base>
+<script>
+  if (window.matchMedia('(max-width: 720px)').matches) {
+    document
+      .querySelector<HTMLDetailsElement>('.toc details')
+      ?.removeAttribute('open');
+  }
+
+  document
+    .querySelectorAll<HTMLElement>(
+      '.document-body h2[id], .document-body h3[id]',
+    )
+    .forEach((heading) => {
+      const anchor = document.createElement('a');
+      anchor.href = `#${heading.id}`;
+      anchor.className = 'heading-anchor';
+      anchor.textContent = '#';
+      anchor.setAttribute('aria-label', `Link to ${heading.textContent}`);
+      heading.append(anchor);
+    });
+</script>

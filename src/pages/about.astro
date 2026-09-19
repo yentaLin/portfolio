@@ -1,0 +1,42 @@
+---
+import Base from '../layouts/Base.astro';
+import { Content as AboutContent } from '../../content/about.md';
+import SocialLinks from '../components/SocialLinks.astro';
+import { site } from '../data/site';
+---
+
+<Base
+  title="About"
+  description="Meet Yen-Ta Lin: electrical engineering, embedded systems, and machine learning."
+>
+  <header class="page-heading">
+    <p class="eyebrow">A PERSON BEHIND THE CODE</p>
+    <h1>
+      Hi, I’m Yen-Ta<span class="accent">.</span>
+    </h1>
+  </header>
+  <div class="about-layout">
+    <article class="prose">
+      <AboutContent />
+    </article>
+    <aside class="about-aside">
+      <div class="small-label mono">AT A GLANCE</div>
+      <dl>
+        {site.quickFacts.map((fact) => (
+          <>
+            <dt>{fact.label}</dt>
+            <dd>
+              {fact.values.map((value, index) => (
+                <>
+                  {index > 0 && <br />}
+                  {value}
+                </>
+              ))}
+            </dd>
+          </>
+        ))}
+      </dl>
+      <SocialLinks />
+    </aside>
+  </div>
+</Base>
