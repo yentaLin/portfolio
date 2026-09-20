@@ -35,7 +35,6 @@ const nav = [
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="icon" href={url('/favicon.svg')} type="image/svg+xml" />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content={article ? 'article' : 'website'} />
@@ -69,9 +68,6 @@ const nav = [
     </a>
     <header class="site-header shell">
       <a class="wordmark" href={url('/')} aria-label="Yen-Ta Lin Home">
-        <span class="monogram">
-          yl<span>.</span>
-        </span>
         <span class="wordmark-name">Yen-Ta Lin</span>
       </a>
       <div class="header-controls">

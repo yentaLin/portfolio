@@ -139,23 +139,11 @@ p {
   gap: 24px;
 }
 .wordmark {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-.monogram {
-  font-family: Georgia, serif;
-  font-size: 35px;
-  font-weight: 700;
-  letter-spacing: -4px;
-  line-height: 1;
-}
-.monogram span {
-  color: var(--accent);
+  display: inline-block;
 }
 .wordmark-name {
-  font-size: 13px;
-  letter-spacing: 0.3px;
+  font-size: 14px;
+  letter-spacing: 0.1px;
   font-weight: 600;
 }
 .header-controls {
@@ -196,20 +184,7 @@ p {
   place-items: center;
 }
 .intro {
-  display: grid;
-  grid-template-columns: 1fr 260px;
-  gap: 70px;
-  align-items: center;
-  padding: 77px 0 69px;
-}
-.status-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-right: 7px;
-  vertical-align: 1px;
+  padding: 92px 0 84px;
 }
 .intro h1 {
   font-family: Georgia, 'Times New Roman', serif;
@@ -217,19 +192,12 @@ p {
   font-weight: 400;
   letter-spacing: -4px;
   line-height: 1.15;
-  margin: 20px 0 22px;
-}
-.identity {
-  font-size: 21px;
-  color: var(--text);
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  margin-bottom: 16px;
+  margin: 18px 0 25px;
 }
 .intro-description {
-  font-size: 14px;
-  max-width: 555px;
-  line-height: 1.95;
+  font-size: 15px;
+  max-width: 720px;
+  line-height: 1.9;
 }
 .social-links {
   display: flex;
@@ -244,50 +212,6 @@ p {
 .social-links a span {
   margin-left: 4px;
   color: var(--muted);
-}
-.system-note {
-  padding: 20px 23px 13px;
-  border: 1px solid var(--line);
-  background-image: radial-gradient(var(--line) 0.8px, transparent 0.8px);
-  background-size: 10px 10px;
-  transform: rotate(2deg);
-}
-.note-label {
-  font-size: 9px;
-  letter-spacing: 1.5px;
-  display: block;
-  margin-bottom: 24px;
-  color: var(--muted);
-}
-.system-layer {
-  border: 1px solid var(--line);
-  background: var(--bg);
-  padding: 8px 11px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.system-layer > .mono {
-  font-size: 9px;
-  color: var(--muted);
-}
-.layer-note {
-  margin-left: auto;
-  font-size: 9px;
-  color: var(--muted);
-}
-.connector {
-  font-size: 14px;
-  line-height: 24px;
-  text-align: center;
-  color: var(--muted);
-}
-.system-note > p {
-  font-size: 8px;
-  text-align: center;
-  margin-top: 20px;
-  letter-spacing: 0.1px;
 }
 .section {
   padding: 38px 0 43px;
@@ -320,18 +244,52 @@ p {
   text-decoration: underline;
   text-underline-offset: 5px;
 }
-.interest-grid {
+.exploration-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 43px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 52px;
 }
-.interest-grid h3 {
-  font-size: 14px;
-  margin-bottom: 9px;
+.exploration-list article {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 13px;
+  padding: 23px 0 25px;
+  border-bottom: 1px solid var(--line);
 }
-.interest-grid p {
+.exploration-list article > .mono {
+  color: var(--muted);
+  font-size: 9px;
+  padding-top: 4px;
+}
+.exploration-list h3 {
+  font-size: 15px;
+  margin-bottom: 7px;
+}
+.exploration-list p {
+  font-size: 12.5px;
+  line-height: 1.85;
+}
+.home-experience-list article {
+  display: grid;
+  grid-template-columns: 175px minmax(0, 1fr);
+  gap: 25px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.home-experience-list article:last-child {
+  border-bottom: 0;
+}
+.home-experience-list > article > .mono {
+  font-size: 10px;
+  color: var(--muted);
+  padding-top: 3px;
+}
+.home-experience-list h3 {
+  font-size: 16px;
+  margin-bottom: 3px;
+}
+.home-experience-list div p {
   font-size: 12px;
-  line-height: 1.9;
 }
 .project-row {
   display: grid;
@@ -936,8 +894,8 @@ p {
 }
 @media (min-width: 1440px) {
   .intro {
-    padding-top: 95px;
-    padding-bottom: 86px;
+    padding-top: 108px;
+    padding-bottom: 96px;
   }
   .site-header {
     min-height: 108px;
@@ -951,30 +909,12 @@ p {
   .shell {
     width: calc(100% - 64px);
   }
-  .intro {
-    gap: 35px;
-    grid-template-columns: 1fr 220px;
-  }
   .intro h1 {
     font-size: 64px;
-  }
-  .identity {
-    font-size: 18px;
   }
   .intro .eyebrow {
     font-size: 9px;
     letter-spacing: 1px;
-  }
-  .system-note {
-    padding: 18px 14px;
-  }
-  .system-layer {
-    gap: 8px;
-    font-size: 11px;
-    padding: 8px;
-  }
-  .layer-note {
-    font-size: 8px;
   }
   .about-layout {
     grid-template-columns: minmax(0, 1fr) 180px;
@@ -993,9 +933,6 @@ p {
   .header-controls nav {
     gap: 21px;
   }
-  .interest-grid {
-    gap: 27px;
-  }
   .background-section {
     gap: 35px;
   }
@@ -1013,9 +950,6 @@ p {
   .wordmark-name {
     font-size: 12px;
   }
-  .monogram {
-    font-size: 29px;
-  }
   .header-controls {
     width: 100%;
     justify-content: space-between;
@@ -1031,9 +965,7 @@ p {
     padding: 6px 0 6px 15px;
   }
   .intro {
-    grid-template-columns: 1fr;
-    gap: 0;
-    padding: 46px 0 39px;
+    padding: 53px 0 48px;
   }
   .intro h1 {
     font-size: 60px;
@@ -1044,16 +976,9 @@ p {
     font-size: 8px;
     letter-spacing: 1px;
   }
-  .identity {
-    font-size: 18px;
-    line-height: 1.8;
-  }
   .intro-description {
     font-size: 13px;
-    line-height: 2;
-  }
-  .system-note {
-    display: none;
+    line-height: 1.9;
   }
   .social-links {
     gap: 22px;
@@ -1075,17 +1000,25 @@ p {
   .section-number {
     font-size: 9px;
   }
-  .interest-grid {
+  .exploration-list {
     grid-template-columns: 1fr;
-    gap: 22px;
   }
-  .interest-grid h3 {
+  .exploration-list article {
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 8px;
+    padding: 20px 0;
+  }
+  .exploration-list h3 {
     font-size: 14px;
     margin-bottom: 4px;
   }
-  .interest-grid p {
+  .exploration-list p {
     font-size: 12px;
     max-width: 450px;
+  }
+  .home-experience-list article {
+    grid-template-columns: 1fr;
+    gap: 7px;
   }
   .project-row {
     grid-template-columns: 21px minmax(0, 1fr) 18px;

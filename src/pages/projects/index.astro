@@ -2,7 +2,6 @@
 import Base from '../../layouts/Base.astro';
 import ProjectList from '../../components/ProjectList.astro';
 import { getProjects } from '../../lib/content';
-import { site } from '../../data/site';
 const projects = await getProjects();
 ---
 
@@ -22,29 +21,4 @@ const projects = await getProjects();
     </p>
   </header>
   <ProjectList projects={projects} />
-  <section class="section">
-    <div class="section-heading">
-      <h2>Open-source explorations</h2>
-      <a class="text-link" href={site.github}>
-        GitHub ↗
-      </a>
-    </div>
-    <p class="muted">
-      Public forks for exploration and experimentation. See each repository for
-      upstream projects and licenses.
-    </p>
-    <div class="repository-list">
-      {site.repositories.map((repo) => (
-        <a href={repo.url}>
-          <div>
-            <h3>
-              {repo.name} <span class="fork-label mono">FORK</span>
-            </h3>
-            <p>{repo.description}</p>
-          </div>
-          <span aria-hidden="true">↗</span>
-        </a>
-      ))}
-    </div>
-  </section>
 </Base>

@@ -6,67 +6,35 @@ import ProjectList from '../components/ProjectList.astro';
 import ArticleList from '../components/ArticleList.astro';
 import { getProjects, getWriting } from '../lib/content';
 import { site } from '../data/site';
+import { experience } from '../data/experience';
 const projects = (await getProjects())
   .filter((p) => p.data.featured)
   .slice(0, 3);
 const articles = (await getWriting()).slice(0, 3);
+const homepageExperience = [
+  experience.find(
+    (item) => item.role === 'LLM Quantization for Edge Deployment',
+  ),
+  experience.find((item) => item.role === 'Research & Development Intern'),
+  experience.find((item) => item.role === 'Electrical & Controls Team Lead'),
+].filter((item) => item !== undefined);
 ---
 
 <Base>
   <section class="intro">
     <div class="intro-copy">
-      <p class="eyebrow">
-        <span class="status-dot"></span> ENGINEER · BUILDER · LIFELONG LEARNER
-      </p>
+      <p class="eyebrow">{site.identity}</p>
       <h1>
         Yen-Ta Lin<span class="accent">.</span>
       </h1>
-
       <p class="intro-description">{site.intro}</p>
       <SocialLinks />
-    </div>
-    <div
-      class="system-note"
-      aria-label="Research interests: models, runtimes, and hardware"
-    >
-      <span class="mono note-label">THINKING IN SYSTEMS</span>
-      <div class="system-layer">
-        <span class="mono">01</span> Model{' '}
-        <span class="layer-note">Representation</span>
-      </div>
-      <div class="connector">↓</div>
-      <div class="system-layer">
-        <span class="mono">02</span> Runtime{' '}
-        <span class="layer-note">Trade-offs</span>
-      </div>
-      <div class="connector">↓</div>
-      <div class="system-layer">
-        <span class="mono">03</span> Hardware{' '}
-        <span class="layer-note">Constraints</span>
-      </div>
-      <p class="mono">ideas → implementation → insight</p>
-    </div>
-  </section>
-  <section class="interests section">
-    <div class="section-heading">
-      <h2>
-        <span class="mono section-number">01 /</span> Current interests
-      </h2>
-      <span class="eyebrow">ON MY MIND</span>
-    </div>
-    <div class="interest-grid">
-      {site.interests.map((interest) => (
-        <div>
-          <h3>{interest.name}</h3>
-          <p>{interest.text}</p>
-        </div>
-      ))}
     </div>
   </section>
   <section class="section">
     <div class="section-heading">
       <h2>
-        <span class="mono section-number">02 /</span> Selected projects
+        <span class="mono section-number">01 /</span> Selected projects
       </h2>
       <a class="text-link" href={url('/projects/')}>
         All projects <span aria-hidden="true">↗</span>
@@ -77,7 +45,7 @@ const articles = (await getWriting()).slice(0, 3);
   <section class="section">
     <div class="section-heading">
       <h2>
-        <span class="mono section-number">03 /</span> Recent writing
+        <span class="mono section-number">02 /</span> Recent writing
       </h2>
       <a class="text-link" href={url('/writing/')}>
         Writing index <span aria-hidden="true">↗</span>
@@ -101,26 +69,50 @@ const articles = (await getWriting()).slice(0, 3);
       </div>
     )}
   </section>
-  <section class="section background-section">
-    <div>
-      <p class="eyebrow">A LITTLE BACKGROUND</p>
+  <section class="section">
+    <div class="section-heading">
       <h2>
-        Between software
-        <br />
-        and hardware.
+        <span class="mono section-number">03 /</span> Currently exploring
       </h2>
+      <span class="eyebrow">WHAT I’M LEARNING NOW</span>
     </div>
-    <div>
-      <p>{site.background}</p>
-      <a class="text-link" href={url('/about/')}>
-        More about me ↗
+    <div class="exploration-list">
+      {site.exploring.map((item) => (
+        <article>
+          <span class="mono">{item.number}</span>
+          <div>
+            <h3>{item.name}</h3>
+            <p>{item.text}</p>
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+  <section class="section home-experience">
+    <div class="section-heading">
+      <h2>
+        <span class="mono section-number">04 /</span> Experience
+      </h2>
+      <a class="text-link" href={url('/experience/')}>
+        Full experience <span aria-hidden="true">↗</span>
       </a>
+    </div>
+    <div class="home-experience-list">
+      {homepageExperience.map((item) => (
+        <article>
+          <p class="mono">{item.period}</p>
+          <div>
+            <h3>{item.role}</h3>
+            <p>{item.organization}</p>
+          </div>
+        </article>
+      ))}
     </div>
   </section>
   <section class="contact section">
     <span class="eyebrow">LET’S CONNECT</span>
     <h2>Have an interesting problem in mind?</h2>
-    <p>Let’s talk embedded ML systems, engineering, or exchange notes.</p>
+    <p>Let’s talk ML systems, efficient inference, or systems engineering.</p>
     <a class="contact-email" href={`mailto:${site.email}`}>
       {site.email} <span aria-hidden="true">↗</span>
     </a>
