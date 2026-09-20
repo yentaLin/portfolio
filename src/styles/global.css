@@ -704,29 +704,39 @@ p {
 }
 .prose {
   min-width: 0;
-  font-size: 16px;
-  line-height: 1.95;
+  font-size: 16.5px;
+  line-height: 1.9;
   overflow-wrap: anywhere;
 }
 .prose p {
-  margin: 0 0 23px;
+  margin: 0 0 26px;
   color: var(--text);
 }
 .prose h2 {
-  font-size: 25px;
-  margin: 43px 0 19px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 29px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
+  margin: 64px 0 22px;
   scroll-margin-top: 30px;
 }
 .prose h2:first-child {
   margin-top: 0;
 }
 .prose h3 {
-  font-size: 20px;
-  margin: 32px 0 15px;
+  font-size: 19px;
+  font-weight: 650;
+  margin: 42px 0 16px;
   scroll-margin-top: 30px;
 }
 .prose h4 {
-  font-size: 17px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 32px 0 12px;
 }
 .prose .lead {
   font-size: 21px;
@@ -750,13 +760,15 @@ p {
   font-weight: 650;
 }
 .prose blockquote {
-  margin: 25px 0;
-  padding: 5px 22px;
-  border-left: 2px solid var(--accent);
+  margin: 31px 0 34px;
+  padding: 1px 0 1px 20px;
+  border-left: 1px solid var(--accent);
 }
 .prose blockquote p {
   color: var(--muted);
   margin: 0;
+  font-size: 0.96em;
+  line-height: 1.85;
 }
 .prose img {
   max-width: 100%;
@@ -775,12 +787,25 @@ p {
 }
 .prose pre {
   font-size: 13px;
-  line-height: 1.8;
-  padding: 23px;
-  border-radius: 4px;
+  line-height: 1.75;
+  padding: 20px 22px;
+  border-radius: 2px;
   overflow-x: auto;
   max-width: 100%;
   background: var(--code) !important;
+  margin: 28px 0 34px;
+}
+.prose pre[data-language='text'] {
+  background: transparent !important;
+  color: var(--text) !important;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  margin: 34px 0 40px;
+  padding: 5px 0 5px 24px;
+  line-height: 1.85;
+}
+.prose pre[data-language='text'] span {
+  color: inherit !important;
 }
 .prose code {
   font-family: 'SFMono-Regular', Consolas, monospace;
@@ -797,19 +822,21 @@ p {
   border-collapse: collapse;
   max-width: 100%;
   font-size: 14px;
-  margin: 27px 0;
+  margin: 34px 0 42px;
   width: 100%;
+  border-top: 1px solid var(--line);
 }
 .prose th,
 .prose td {
   border-bottom: 1px solid var(--line);
   text-align: left;
-  padding: 12px 26px 12px 10px;
+  padding: 12px 28px 12px 0;
   min-width: 110px;
 }
 .prose th {
-  background: var(--soft);
   font-weight: 600;
+  color: var(--muted);
+  background: transparent;
 }
 .prose hr {
   border: 0;
@@ -819,7 +846,8 @@ p {
 .prose .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 12px 0;
+  margin: 10px 0 30px;
+  padding: 8px 0;
 }
 .heading-anchor {
   opacity: 0;
@@ -1168,17 +1196,18 @@ p {
   }
   .prose {
     font-size: 15px;
-    line-height: 1.95;
+    line-height: 1.9;
   }
   .prose .lead {
     font-size: 18px;
   }
   .prose h2 {
-    font-size: 22px;
-    margin-top: 34px;
+    font-size: 25px;
+    margin-top: 48px;
   }
   .prose h3 {
-    font-size: 19px;
+    font-size: 18px;
+    margin-top: 34px;
   }
   .experience-row {
     grid-template-columns: 1fr;
@@ -1285,7 +1314,11 @@ p {
   }
   .prose pre {
     font-size: 12px;
-    padding: 17px;
+    padding: 17px 16px;
+  }
+  .prose pre[data-language='text'] {
+    margin: 28px 0 34px;
+    padding: 3px 0 3px 15px;
   }
   .document-end {
     margin-top: 30px;
