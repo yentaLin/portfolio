@@ -10,7 +10,7 @@ draft: false
 featured: false
 ---
 
-Notes on **LightSeq: A High Performance Inference Library for Transformers**, a required reading for **LLM Systems at CMU**. These personal study notes connect the paper’s optimization ideas with illustrative code excerpts; they are not official course material. See the source references and version note for the distinction between the paper and the later codebase.
+Notes on **LightSeq: A High Performance Inference Library for Transformers**, a required reading for **LLM Systems at CMU**. 
 
 > **Paper:** *LightSeq: A High Performance Inference Library for Transformers*  
 > **Core idea:** LightSeq does **not** mainly change what a Transformer computes. It removes waste from **how Transformer inference is executed** on GPUs.
@@ -24,7 +24,7 @@ Notes on **LightSeq: A High Performance Inference Library for Transformers**, a 
 
 LightSeq is a **high-performance inference library for Transformer-family models**.
 
-Its goal is not to redesign Transformer architecture, but to answer:
+Its goal is to answer:
 
 > **The Transformer computation is already defined. How can we execute inference much more efficiently on GPUs?**
 
@@ -133,26 +133,6 @@ maximum-shape pre-allocation
 +
 reuse storage when tensor lifetimes permit
 ```
-
----
-
-### Overall Mental Model
-
-```text
-Execution overhead
-      ↓
-Operation Fusion
-
-Computation overhead
-      ↓
-HARS
-
-Memory-management overhead
-      ↓
-Dynamic GPU Memory Reuse
-```
-
-> **LightSeq removes inference overhead at the execution, computation, and memory levels.**
 
 ---
 
@@ -600,64 +580,6 @@ This is a more advanced fusion case:
 
 ---
 
-### What the Three Examples Teach
-
-```text
-ker_bias_relu
-      ↓
-Fuse adjacent element-wise computation
-
-ker_arrange_encself_qkv
-      ↓
-Fuse computation + data transformation
-
-ker_norm_layer
-      ↓
-Fuse multiple dependent stages
-inside one kernel
-```
-
-Unified principle:
-
-```text
-Data is already being processed
-        ↓
-do as much useful adjacent work as possible
-        ↓
-avoid unnecessary intermediate tensors
-        ↓
-reduce memory traffic + kernel launches
-```
-
----
-
-### Final Takeaway
-
-$$
-T_{\text{total}}
-=
-T_{\text{compute}}
-+
-T_{\text{memory}}
-+
-T_{\text{launch}}
-+\cdots
-$$
-
-Operation Fusion does **not necessarily reduce FLOPs**.
-
-Its main target is:
-
-$$
-\boxed{
-T_{\text{memory}} + T_{\text{launch}}
-}
-$$
-
-> **Operation Fusion = combine adjacent work while the data is already available, instead of repeatedly materializing intermediate tensors in global memory.**
-
----
-
 ## 3. Hierarchical Auto-Regressive Search (HARS)
 
 ### The Problem
@@ -925,33 +847,6 @@ for each vocabulary token
  discard        keep as
                 candidate
 ```
-
----
-
-### Final Takeaway
-
-Operation Fusion and HARS optimize different things.
-
-```text
-Operation Fusion
-────────────────────
-same useful computation
-↓
-execute it more efficiently
-
-
-HARS
-────────────────────
-avoid unnecessary computation
-↓
-shrink the search space first
-```
-
-$$
-\boxed{
-\text{HARS = reduce the number of candidates worth processing.}
-}
-$$
 
 ---
 
@@ -1483,127 +1378,13 @@ LightSeq still shows strong speedup
 
 ---
 
-### Main Takeaway
-
-```text
-Operation Fusion
-+
-HARS
-+
-Memory Reuse
-        ↓
-remove auxiliary overhead
-        ↓
-GEMM becomes the dominant bottleneck
-```
-
-$$
-\boxed{
-\text{A successful optimization often moves the bottleneck elsewhere.}
-}
-$$
-
----
-
-## 6. Unified Mental Model
-
-The whole paper can be reconstructed from three kinds of waste:
-
-```text
-Transformer Inference Waste
-│
-├── Too many small kernels
-│       ↓
-│   Operation Fusion
-│
-├── Too many useless vocabulary candidates
-│       ↓
-│   HARS
-│
-└── Too many runtime memory allocations
-        ↓
-    Dynamic GPU Memory Reuse
-```
-
-Or, more abstractly:
-
-```text
-Operation Fusion
-→ optimize execution
-
-HARS
-→ optimize amount of computation
-
-Dynamic GPU Memory Reuse
-→ optimize memory management
-```
-
-The full story is:
-
-```text
-Transformer inference
-        ↓
-identify avoidable overhead
-        ↓
-┌────────────────────────────────────┐
-│ Operation Fusion                   │
-│ execute necessary work efficiently │
-├────────────────────────────────────┤
-│ HARS                               │
-│ avoid unnecessary work             │
-├────────────────────────────────────┤
-│ Dynamic GPU Memory Reuse           │
-│ avoid unnecessary allocation       │
-└────────────────────────────────────┘
-        ↓
-non-GEMM overhead shrinks
-        ↓
-GEMM becomes dominant
-```
-
-> **LightSeq is an inference-system optimization paper: it improves how computation is executed, searched, and stored rather than changing the Transformer model itself.**
-
----
-
-## 7. Quick Review
-
-### One-line summary of each technique
+## 6. Summary
 
 | Technique | Main Problem | Core Solution |
 |---|---|---|
 | **Operation Fusion** | Too many small kernels and intermediate memory transfers | Fuse adjacent operations into custom CUDA kernels |
 | **HARS** | Too many vocabulary candidates processed | Retrieve a small candidate set before expensive ranking |
 | **Dynamic GPU Memory Reuse** | Repeated allocation and wasted temporary buffers | Pre-allocate maximum capacity and reuse storage by lifetime |
-
----
-
-### Fast Comparison
-
-```text
-Operation Fusion
-→ Same useful computation
-→ lower execution overhead
-
-HARS
-→ Less computation
-→ fewer candidates processed
-
-Memory Reuse
-→ Same computation
-→ less allocation / storage waste
-```
-
----
-
-### Final Exam-Ready Takeaway
-
-If asked:
-
-> **What makes LightSeq fast?**
-
-A strong answer is:
-
-> LightSeq removes three major sources of Transformer inference overhead. It fuses fine-grained GPU operations to reduce kernel launches and intermediate memory traffic, uses hierarchical auto-regressive search to avoid expensive full-vocabulary processing, and pre-allocates/reuses GPU memory to reduce runtime allocation overhead. Together, these optimizations shift runtime toward the essential GEMM computation.
 
 ---
 
