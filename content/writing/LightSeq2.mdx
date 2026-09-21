@@ -24,41 +24,15 @@ The focus is to understand **why LightSeq2 is needed, how each optimization chan
 
 ## 1. Overview
 
-### 1.1 What problem is LightSeq2 trying to solve?
+### 1.1 Training Problem
 
 Transformer models had already become expensive to train when LightSeq2 was proposed. The paper's central observation is that training cost grows quickly with model size, while existing acceleration systems did not optimize the **complete Transformer training process**.
 
 The key distinction is:
 
-<Mermaid
-  chart={`flowchart TD
-    n1["Inference"]
-    n2["forward computation only"]
-    n3["Training"]
-    n4["forward"]
-    n5["backward"]
-    n6["gradient synchronization"]
-    n7["parameter update"]
-    n8["storage of activations / gradients"]
-    n1 --> n2
-    n3 --> n4
-    n4 --> n5
-    n5 --> n6
-    n6 --> n7
-    n7 --> n8`}
-  caption="LightSeq2 execution flow"
-/>
+Training introduces extra computation, extra memory traffic, extra temporary tensors, and optimizer work that inference systems do not need to handle.
 
-Optimizing inference is therefore not enough. Training introduces extra computation, extra memory traffic, extra temporary tensors, and optimizer work that inference systems do not need to handle.
-
-The paper targets a broad Transformer family:
-
-- encoder-only models such as BERT,
-- decoder-only models such as GPT,
-- encoder-decoder Transformers for sequence generation,
-- Vision Transformer-style encoder models.
-
-The system goal is not to modify the Transformer algorithm. LightSeq2 tries to preserve the same training behavior while changing **how the computation is executed on the GPU**.
+LightSeq2 tries to preserve the same training behavior while changing **how the computation is executed on the GPU**.
 
 $$
 \boxed{\text{Same training algorithm} \;\rightarrow\; \text{more efficient GPU execution}}
@@ -66,31 +40,11 @@ $$
 
 ---
 
-### 1.2 Why were existing systems insufficient?
+### 1.2 Existing Limitations
 
 At the time of the paper, several high-performance systems focused mainly on inference. Other training systems optimized only part of the Transformer stack.
 
-A full encoder-decoder training system must handle more than an encoder block:
-
-<Mermaid
-  chart={`flowchart TD
-    n1["Embedding"]
-    n2["Encoder layers"]
-    n3["Decoder self-attention"]
-    n4["Decoder cross-attention"]
-    n5["Criterion / loss"]
-    n6["Backward propagation"]
-    n7["Optimizer update"]
-    n1 --> n2
-    n2 --> n3
-    n3 --> n4
-    n4 --> n5
-    n5 --> n6
-    n6 --> n7`}
-  caption="LightSeq2 execution flow"
-/>
-
-This matters because each part creates different GPU bottlenecks.
+A full encoder-decoder training system must handle more than an encoder block. This matters because each part creates different GPU bottlenecks.
 
 For example:
 
@@ -101,11 +55,10 @@ For example:
 - Mixed-precision optimizers create precision-conversion and memory-traffic overhead.
 - Training stores many intermediate tensors for backward.
 
-LightSeq2 therefore treats Transformer training as a **system-level pipeline**, not as one isolated kernel.
 
 ---
 
-### 1.3 Where does training time go?
+### 1.3 Training Bottlenecks
 
 The paper divides one data-parallel training iteration into four stages:
 
@@ -121,13 +74,13 @@ The paper divides one data-parallel training iteration into four stages:
   caption="LightSeq2 execution flow"
 />
 
-Forward and backward are mostly compute-kernel problems.
+1. Forward and backward are mostly compute-kernel problems.
 
-Parameter synchronization is communication-heavy.
+2. Parameter synchronization is communication-heavy.
 
-Parameter update is an optimizer problem with significant memory traffic.
+3. Parameter update is an optimizer problem with significant memory traffic.
 
-Training also requires memory for:
+4. Training also requires memory for:
 
 ```text
 parameters
@@ -169,7 +122,7 @@ This gives LightSeq2 three broad optimization targets:
 
 ---
 
-### 1.4 LightSeq2's main design
+### 1.4 System Design
 
 The paper presents four technical sections, which can be understood as three larger system goals.
 
@@ -182,21 +135,11 @@ The paper presents four technical sections, which can be understood as three lar
   caption="LightSeq2 maps each bottleneck to a specific optimization"
 />
 
-The important idea is that these optimizations target **different causes**.
-
-Operation fusion is not the same as reduction rewriting.
-
-Optimizer batching is not the same as model-kernel fusion.
-
-Memory reuse is not just another kernel optimization.
-
-Each one attacks a different part of the training pipeline.
-
 ---
 
-## 2. Computational Graph Optimization
+## 2. Graph Optimization
 
-### 2.1 Why can a Transformer graph be inefficient on a GPU?
+### 2.1 GPU Execution Overhead
 
 A high-level framework expresses a Transformer as many operations:
 
@@ -247,7 +190,7 @@ This is especially important for Transformer training because the graph contains
 
 ---
 
-### 2.2 GEMM vs. non-GEMM operations
+### 2.2 GEMM vs. Non-GEMM
 
 LightSeq2 separates Transformer computation into two broad classes.
 
@@ -329,7 +272,7 @@ The code path is implemented mainly in:
 
 ---
 
-### 2.3 Operation fusion
+### 2.3 Operation Fusion
 
 Consider the output of an attention projection:
 
@@ -381,7 +324,7 @@ LightSeq2 instead combines compatible element-wise work into a coarse-grained cu
 
 The mathematical result is unchanged, but intermediate global-memory traffic is reduced.
 
-#### Code mapping
+#### Code
 
 In the encoder implementation, attention output eventually reaches a call equivalent to:
 
@@ -403,7 +346,7 @@ The model still performs the same bias, dropout, and residual operations. The di
 
 ---
 
-### 2.4 QKV bias + layout transformation
+### 2.4 QKV Transform Fusion
 
 Multi-head attention requires Q, K, and V to be rearranged into a head-oriented layout.
 
@@ -453,7 +396,7 @@ The system therefore fuses work that naturally touches the same data.
 
 ---
 
-### 2.5 Transformer encoder execution in the code
+### 2.5 Encoder Execution
 
 The public PyTorch API still looks like a normal layer:
 
@@ -534,7 +477,7 @@ The custom PyTorch operator gives LightSeq control over the layer, while the C++
 
 ---
 
-### 2.6 Embedding layer: why backward is special
+### 2.6 Embedding Backward
 
 The embedding forward pass is conceptually simple.
 
@@ -601,7 +544,7 @@ where $m(i)$ is the dropout mask.
 
 This is different from a dense element-wise backward pass because multiple source positions can target the same destination.
 
-#### Code mapping
+#### Code
 
 The PyBind interface exposes separate embedding forward and backward entry points and passes token indices plus gradient buffers into `TransformerEmbeddingLayer`.
 
@@ -624,7 +567,7 @@ The key implementation concept is not merely "embedding lookup" but:
 
 ---
 
-### 2.7 Criterion layer: simplifying label-smoothed cross entropy
+### 2.7 Criterion
 
 For generation tasks, the criterion may compute cross entropy with label smoothing.
 
@@ -681,7 +624,7 @@ Because after the Softmax result is available, the gradient becomes highly paral
 
 There is no need to literally evaluate the full Softmax Jacobian.
 
-#### Code mapping
+#### Code
 
 The PyBind layer creates a `CrossEntropyLayer`, and its forward/backward paths are implemented by the C++ layer plus `cross_entropy.cu`.
 
@@ -703,7 +646,7 @@ The paper also notes that its implementation works with logarithmic Softmax form
 
 ---
 
-### 2.8 Layer-batched cross attention
+### 2.8 Layer-Batched Cross Attention
 
 Cross attention introduces an optimization that is different from ordinary element-wise fusion.
 
@@ -779,9 +722,9 @@ This is called **layer-batched** because the batching happens across decoder lay
 
 ---
 
-## 3. Dependent Reduction Rewriting
+## 3. Reduction Rewriting
 
-### 3.1 Why reduction operations need a different strategy
+### 3.1 Reduction Dependency
 
 Element-wise fusion works well when each output element can be computed independently.
 
@@ -832,7 +775,7 @@ The LightSeq2 idea is not simply "fuse more operations." It rewrites dependencie
 
 ---
 
-### 3.2 LayerNorm forward
+### 3.2 LayerNorm Forward
 
 LayerNorm is:
 
@@ -912,7 +855,7 @@ This is an example of a recurring systems principle:
 
 ---
 
-### 3.3 LayerNorm backward
+### 3.3 LayerNorm Backward
 
 Backward is more complicated because each input gradient depends on reduction terms over the whole normalized vector.
 
@@ -1069,9 +1012,9 @@ This is a shape-aware GPU optimization rather than a change to the Softmax equat
 
 ---
 
-## 4. Accelerated Mixed-Precision Trainer
+## 4. Mixed-Precision Trainer
 
-### 4.1 Why can the optimizer be expensive?
+### 4.1 Optimizer Overhead
 
 Forward and backward receive most of the attention in deep-learning optimization, but the paper measures parameter update as a significant fraction of training time.
 
@@ -1102,7 +1045,7 @@ So the accuracy requirement creates extra memory movement.
 
 ---
 
-### 4.2 The straightforward mixed-precision update
+### 4.2 Baseline Update
 
 A fragmented model may contain many parameter tensors:
 
@@ -1136,7 +1079,7 @@ The bottleneck is not only Adam arithmetic. It is also the system cost of managi
 
 ---
 
-### 4.3 Symbolic tensor linking
+### 4.3 Symbolic Tensor Linking
 
 LightSeq2's paper design first places parameters and gradients into continuous workspaces.
 
@@ -1188,7 +1131,7 @@ That layer-level flat parameter layout is not identical to the paper's whole-tra
 
 ---
 
-### 4.4 On-the-fly conversion
+### 4.4 On-the-Fly Conversion
 
 The second trainer idea is to avoid maintaining full extra FP32 copies merely for the update path.
 
@@ -1244,7 +1187,7 @@ The important distinction is that **reduced storage precision does not mean redu
 
 ---
 
-### 4.5 Code mapping and an important repository caveat
+### 4.5 Code Alignment
 
 The public repository exposes `LSAdam`, which loads a LightSeq CUDA extension through `AdamBuilder` and calls a fused CUDA Adam routine.
 
@@ -1268,9 +1211,9 @@ This distinction is important when reading systems papers: the paper and the lat
 
 ---
 
-## 5. Dangling-Tensor Aware Memory Manager
+## 5. Memory Management
 
-### 5.1 Why training memory is different from inference memory
+### 5.1 Training Memory
 
 Inference can often release intermediate tensors quickly after they are consumed.
 
@@ -1307,11 +1250,11 @@ Dynamically allocating and releasing these buffers every iteration adds allocato
 
 ---
 
-### 5.2 Permanent vs. temporary memory
+### 5.2 Memory Types
 
 LightSeq2 conceptually divides memory into:
 
-#### Permanent memory
+#### Permanent
 
 Lives for most or all of training:
 
@@ -1319,7 +1262,7 @@ Lives for most or all of training:
 - gradients,
 - persistent optimizer state.
 
-#### Temporary memory
+#### Temporary
 
 Needed only during parts of forward/backward:
 
@@ -1332,7 +1275,7 @@ The key opportunity is that temporary tensors have different lifetimes.
 
 ---
 
-### 5.3 Tensor lifetime and dangling tensors
+### 5.3 Tensor Lifetime
 
 Suppose:
 
@@ -1364,7 +1307,7 @@ This is exactly the same logic as compiler liveness-based register allocation, a
 
 ---
 
-### 5.4 Self-attention backward example
+### 5.4 Attention Backward
 
 The paper's Fig. 8 tracks self-attention backward.
 
@@ -1467,9 +1410,9 @@ The code contains several explicitly shared pointers such as temporary QKV, cont
 
 ---
 
-## 6. LightSeq2 Software Architecture
+## 6. Software Architecture
 
-### 6.1 The software stack
+### 6.1 Software Stack
 
 The paper organizes LightSeq2 into layers:
 
@@ -1509,7 +1452,7 @@ The purpose is usability:
   caption="LightSeq2 execution flow"
 />
 
-#### C++ operator / layer layer
+#### C++ Operator
 
 Owns Transformer-specific execution structure.
 
@@ -1522,7 +1465,7 @@ It decides when to call:
 - layout transforms,
 - residual fusion.
 
-#### CUDA kernel layer
+#### CUDA Kernels
 
 Implements custom non-GEMM operations.
 
@@ -1540,7 +1483,7 @@ hand-optimized Transformer-specific kernels
 
 ---
 
-### 6.2 How the PyTorch layer reaches C++
+### 6.2 PyTorch–C++ Bridge
 
 The encoder Python file loads the compiled extension through `TransformerBuilder`.
 
@@ -1588,7 +1531,7 @@ This is the software boundary where PyTorch tensor objects become low-level GPU 
 
 ---
 
-### 6.3 Inside `TransformerEncoderLayer::Forward`
+### 6.3 Encoder Forward Path
 
 The C++ layer is an execution orchestrator.
 
@@ -1644,7 +1587,7 @@ The C++ layer has enough structural knowledge to select specialized operations w
 
 ---
 
-### 6.4 Why this abstraction matters
+### 6.4 Execution Abstraction
 
 A standard deep-learning framework sees reusable generic operators.
 
@@ -1677,13 +1620,13 @@ This larger abstraction enables optimization across boundaries that would otherw
 
 ---
 
-## 7. Experiments and Evidence
+## 7. Experiments
 
 The experiments are not just a collection of benchmark numbers. Each one is evidence for a different design claim.
 
 ---
 
-### 7.1 End-to-end speedup
+### 7.1 End-to-End Speedup
 
 The paper evaluates:
 
@@ -1715,7 +1658,7 @@ This supports the claim that the system is not optimized for only one BERT-style
 
 ---
 
-### 7.2 Full Transformer results
+### 7.2 Transformer
 
 For machine translation, LightSeq2 is evaluated against Fairseq and Fairseq+Apex.
 
@@ -1771,7 +1714,7 @@ This result is important because it shows a limitation of kernel-fusion systems:
 
 ---
 
-### 7.4 BERT and GPT-2
+### 7.4 BERT & GPT-2
 
 BERT tests encoder-only performance.
 
@@ -1788,7 +1731,7 @@ The key conclusion is architectural coverage, not a single absolute number.
 
 ---
 
-### 7.5 Operator-level evidence
+### 7.5 Operator Results
 
 The paper separately benchmarks:
 
@@ -1837,7 +1780,7 @@ This supports the idea that the trainer optimization attacks a cost that scales 
 
 ---
 
-### 7.6 Optimization breakdown
+### 7.6 Ablation
 
 The paper compares:
 
@@ -1867,7 +1810,7 @@ The full system combines both.
 
 ---
 
-### 7.7 Memory evidence
+### 7.7 Memory
 
 For Transformer-Base and Transformer-Big on one V100, the paper reports that Fairseq consumes about 6 GB more memory than LightSeq2 in the shown experiments.
 
@@ -1899,7 +1842,7 @@ This directly supports the preallocation + reuse design.
 
 ---
 
-### 7.8 GPU utilization
+### 7.8 GPU Utilization
 
 The paper shows LightSeq2 maintaining very high GPU utilization in the tested machine-translation runs.
 
@@ -1950,9 +1893,9 @@ The paper explicitly treats communication optimization as orthogonal future work
 
 ---
 
-## 8. What LightSeq2 Changes — and What It Does Not
+## 8. Design Boundaries
 
-### 8.1 LightSeq2 does not redesign Transformer mathematics
+### 8.1 Mathematical Equivalence
 
 It does not replace self-attention with a sparse or linear-attention approximation.
 
@@ -1980,7 +1923,7 @@ This is why LightSeq2 is best understood as a **systems optimization paper**.
 
 ---
 
-### 8.2 LightSeq2 is not only operation fusion
+### 8.2 Beyond Fusion
 
 It is tempting to summarize the paper as "fuse CUDA kernels."
 
@@ -2009,7 +1952,7 @@ Each bottleneck requires a different mechanism.
 
 ---
 
-### 8.3 LightSeq2 is not "one giant Transformer kernel"
+### 8.3 Execution Granularity
 
 The PyTorch interface may expose an entire Transformer layer as one custom autograd function, but internally the layer still launches several operations.
 
@@ -2025,39 +1968,9 @@ That control makes cross-operation optimization possible.
 
 ---
 
-## 9. Complete Mental Model
-
-The entire paper can be reconstructed from one chain.
-
-<Mermaid
-  chart={`flowchart TD
-    cost["Transformer training is expensive"] --> work["Training adds backward, synchronization, optimizer, and activation storage"]
-    work --> overhead["Generic frameworks execute many Transformer operations inefficiently"]
-    overhead --> computation["Computation bottlenecks"]
-    overhead --> optimizer["Optimizer bottlenecks"]
-    overhead --> memory["Memory bottlenecks"]
-    computation --> fusion["Fuse compatible non-GEMM operations"]
-    computation --> reductions["Rewrite and specialize reductions"]
-    optimizer --> conversion["Batch parameters and convert FP16 / FP32 on the fly"]
-    memory --> reuse["Preallocate and reuse buffers by tensor lifetime"]
-    fusion --> result["Fewer launches and less memory traffic"]
-    reductions --> result
-    conversion --> result
-    reuse --> result
-    result --> throughput["Higher training throughput with unchanged core mathematics"]`}
-  caption="Complete LightSeq2 mental model"
-/>
-
-$$
-\boxed{
-\text{LightSeq2 = Transformer-aware GPU execution optimization for training}
-}
-$$
-
 ---
 
-## 10. Code Map for Future Review
-
+## 9. Code Map
 Use this map when you want to reconnect a paper concept to the repository.
 
 | Concept                            | Primary implementation area                                                         |
@@ -2092,7 +2005,7 @@ Do not start by reading every CUDA file from top to bottom.
 
 ---
 
-## 11. Source Notes
+## 10. Sources
 
 ### Paper
 
