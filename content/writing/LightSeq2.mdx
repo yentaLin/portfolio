@@ -139,7 +139,7 @@ The paper presents four technical sections, which can be understood as three lar
 
 ## 2. Graph Optimization
 
-### 2.1 GPU Execution Overhead
+### 2.1 GPU Overhead
 
 A high-level framework expresses a Transformer as many operations:
 
@@ -262,13 +262,21 @@ The C++ layer alternates between GEMM wrappers and LightSeq kernels:
   caption="LightSeq2 execution flow"
 />
 
-The code path is implemented mainly in:
+#### Code
 
-- `lightseq/csrc/layers/transformer_encoder_layer.cpp`
-- `lightseq/csrc/kernels/cuda/transform_kernels.cu`
-- `lightseq/csrc/kernels/cuda/dropout_kernels.cu`
-- `lightseq/csrc/kernels/cuda/softmax_kernels.cu`
-- `lightseq/csrc/kernels/cuda/normalize_kernels.cu`
+The encoder code makes this division visible. A simplified reading of the attention path is:
+
+```cpp
+// Simplified from TransformerEncoderLayer::attn_layer_fw
+GEMM(Q, K);          // cuBLAS-backed matrix multiplication
+Softmax(scores);     // LightSeq custom reduction operator
+Dropout(prob);       // LightSeq custom CUDA operator
+GEMM(prob, V);       // cuBLAS-backed matrix multiplication
+```
+
+This pseudocode is intentionally simplified: it shows **which kind of work is delegated to cuBLAS and which kind is handled by LightSeq kernels**, rather than reproducing the full implementation.
+
+[Open `TransformerEncoderLayer::attn_layer_fw`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/layers/transformer_encoder_layer.cpp) and search for `attn_layer_fw`.
 
 ---
 
@@ -326,15 +334,30 @@ The mathematical result is unchanged, but intermediate global-memory traffic is 
 
 #### Code
 
-In the encoder implementation, attention output eventually reaches a call equivalent to:
+The attention output path directly calls the fused primitive:
 
-```text
-_attn_dropout.bias_dropout_residual(...)
+```cpp
+_attn_dropout.bias_dropout_residual(...);
 ```
 
-and the FFN output follows the same pattern.
+The function name is already the important clue:
 
-This is the implementation-level meaning of the fused box in the paper's optimized Transformer graph.
+```text
+bias
++
+dropout
++
+residual
+↓
+one fused CUDA path
+```
+
+So the C++ layer does **not** call three independent framework operators. It hands the combined work to one LightSeq primitive.
+
+For the full implementation, read:
+
+- [`transformer_encoder_layer.cpp`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/layers/transformer_encoder_layer.cpp) — search `bias_dropout_residual`
+- [`dropout_kernels.cu`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/dropout_kernels.cu) — fused dropout-family CUDA kernels
 
 The important distinction is:
 
@@ -346,7 +369,7 @@ The model still performs the same bias, dropout, and residual operations. The di
 
 ---
 
-### 2.4 QKV Transform Fusion
+### 2.4 QKV Transform
 
 Multi-head attention requires Q, K, and V to be rearranged into a head-oriented layout.
 
@@ -372,13 +395,23 @@ The reshape itself contains little arithmetic, but launching separate kernels fo
 
 LightSeq2 combines these tasks after the QKV GEMM.
 
-In the current public implementation, the encoder calls a function named like:
+In the current public implementation, the encoder calls:
 
-```text
-launch_bias_add_transform_20314(...)
+```cpp
+launch_bias_add_transform_20314<T>(...);
 ```
 
-after `_qkv_linear.Forward(...)`.
+after the QKV projection.
+
+The useful way to read the name is:
+
+- `bias_add` — add the Q/K/V bias,
+- `transform` — change the tensor layout,
+- `20314` — an internal layout-permutation label used by LightSeq.
+
+The full call has many shape and pointer arguments, so it is more useful to inspect it in context than to copy the entire line here.
+
+[Open the QKV transform call](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/layers/transformer_encoder_layer.cpp) and search `launch_bias_add_transform_20314`.
 
 The exact numeric suffix describes an internal layout permutation. The useful mental model is simpler:
 
@@ -424,7 +457,17 @@ FFN LayerNorm weight / bias
 
 This already reduces fragmentation at the layer representation level.
 
-During `forward()`, the Python layer invokes a custom autograd function:
+During `forward()`, the Python layer invokes a custom autograd function.
+
+The actual Python handoff is:
+
+```python
+output = LSTransformerEncoderFunc.apply(...)
+```
+
+This means PyTorch still owns autograd at the outer level, but LightSeq takes over the layer implementation underneath.
+
+[Open the Python wrapper](https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/transformer_encoder_layer.py) and search `LSTransformerEncoderFunc.apply`.
 
 <Mermaid
   chart={`flowchart TD
@@ -438,7 +481,19 @@ During `forward()`, the Python layer invokes a custom autograd function:
 
 The PyTorch extension is built by `TransformerBuilder`, which includes the C++ layer files and CUDA kernel sources.
 
-The PyBind interface then converts PyTorch tensors to raw pointers and invokes the C++ layer:
+The PyBind interface then converts PyTorch tensors to raw pointers and invokes the C++ layer.
+
+The actual boundary is a call of the form:
+
+```cpp
+layer->Forward(input_ptr, input_mask_ptr, out_ptr);
+```
+
+At this point the high-level `torch::Tensor` objects have been converted into GPU-memory pointers used by the C++ layer.
+
+[Open the PyBind bridge](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/pybind/pybind_layer.cpp) and search `layer->Forward`.
+
+The conceptual transition is:
 
 <Mermaid
   chart={`flowchart TD
@@ -546,9 +601,23 @@ This is different from a dense element-wise backward pass because multiple sourc
 
 #### Code
 
-The PyBind interface exposes separate embedding forward and backward entry points and passes token indices plus gradient buffers into `TransformerEmbeddingLayer`.
+The CUDA backward kernel contains atomic updates such as:
 
-The corresponding CUDA implementation is included through `embedding_kernels.cu`.
+```cpp
+atomicAdd(grad_embeddings + idx, res4.x);
+```
+
+This line is exactly what the paper's sparse-gradient discussion predicts:
+
+```text
+different token positions
+↓
+same embedding row
+↓
+atomic accumulation prevents lost updates
+```
+
+[Open `embedding_kernels.cu`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/embedding_kernels.cu) and search `atomicAdd(grad_embeddings`.
 
 The key implementation concept is not merely "embedding lookup" but:
 
@@ -626,7 +695,17 @@ There is no need to literally evaluate the full Softmax Jacobian.
 
 #### Code
 
-The PyBind layer creates a `CrossEntropyLayer`, and its forward/backward paths are implemented by the C++ layer plus `cross_entropy.cu`.
+The important code-level idea is that the kernel works directly from the Softmax/log-probability result and target index. A simplified reading is:
+
+```cpp
+// Simplified logic, not verbatim source
+grad = probability - smoothing_term;
+if (token == target) grad -= (1 - alpha);
+```
+
+That is the implementation consequence of the derivation above: **each vocabulary slot can compute its gradient independently**.
+
+For the full CUDA implementation, see [`cross_entropy.cu`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/cross_entropy.cu).
 
 The implementation structure follows:
 
@@ -813,7 +892,20 @@ $$
 \sqrt{\mu(x^2)-\mu(x)^2}
 $$
 
-Now the two statistics can be accumulated together:
+Now the two statistics can be accumulated together.
+
+The CUDA kernel mirrors this derivation by accumulating both the ordinary sum and the squared sum:
+
+```cpp
+float reduce_val[2] = {l_sum, l_square_sum};
+blockReduce<ReduceType::kSum, 2>(reduce_val);
+```
+
+So the paper equation is not only mathematical justification—the implementation literally reduces **two statistics together**.
+
+[Open `normalize_kernels.cu`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/normalize_kernels.cu) and search `l_square_sum`.
+
+The conceptual execution becomes:
 
 <Mermaid
   chart={`flowchart TD
@@ -986,6 +1078,19 @@ Unlike LayerNorm, the max reduction must logically precede the exponential sum f
 The important challenge is **shape diversity**.
 
 Attention reduction dimensions may vary from very small sequences to thousands of positions. A kernel configuration that works well for one shape may waste resources for another.
+
+The CUDA code follows the stable Softmax structure directly:
+
+```cpp
+blockReduce<ReduceType::kMax, token_per_reduce>(l_max);
+blockReduce<ReduceType::kSum, token_per_reduce>(l_sum);
+```
+
+The first reduction finds the stable maximum; the second reduces the exponentials after subtracting that maximum.
+
+The file also contains different kernel variants for different shape regimes rather than one universal implementation.
+
+[Open `softmax_kernels.cu`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/softmax_kernels.cu) and search `ker_attn_softmax`.
 
 LightSeq2 therefore provides multiple reduction templates and tunes parameters such as:
 
@@ -1187,27 +1292,30 @@ The important distinction is that **reduced storage precision does not mean redu
 
 ---
 
-### 4.5 Code Alignment
+### 4.5 Code
 
-The public repository exposes `LSAdam`, which loads a LightSeq CUDA extension through `AdamBuilder` and calls a fused CUDA Adam routine.
+The public PyTorch optimizer loads a compiled LightSeq extension:
 
-The Python wrapper advertises support for:
+```python
+fused_adam_cuda = AdamBuilder().load()
+```
 
-- memory-efficient FP16,
-- flat parameters,
-- scaled updates.
+and later calls the fused CUDA Adam implementation.
 
-However, the currently archived public `adam.py` still presents a per-parameter Python loop and creates an FP32 view/copy before calling the CUDA routine.
+The same wrapper also contains:
 
-Therefore, the inspected public wrapper does **not transparently expose the complete symbolic-linking workflow exactly as Fig. 6–7 describes it**.
+```python
+p_data_fp32 = p.data.float()
+```
 
-For these notes:
+This is useful because it shows two things directly:
 
-- the **paper** is the primary source for the workspace + on-the-fly trainer design,
-- the public code confirms that LightSeq provides a custom fused Adam path and flat-parameter support,
-- but we should not claim that the current `adam.py` file is a one-to-one implementation of every trainer detail in the paper.
+1. LightSeq does move optimizer arithmetic into a custom CUDA path.
+2. The archived public wrapper still materializes an FP32 representation in Python.
 
-This distinction is important when reading systems papers: the paper and the latest public repository may correspond to different revisions of the implementation.
+So the repository does **not** expose the paper's Figure 6–7 symbolic-linking design as cleanly as the paper describes it. For the trainer mechanism, use the paper as the primary design source and the repository as supporting implementation evidence.
+
+[Open `adam.py`](https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/adam.py) and search `AdamBuilder` or `p_data_fp32`.
 
 ---
 
@@ -1339,6 +1447,21 @@ Naively allocating separate storage for every intermediate would require memory 
 LightSeq2 observes that many intermediates do not overlap in lifetime.
 
 It groups tensors into reusable blocks.
+
+The C++ backward code makes this reuse visible through pointer aliasing. A simplified reading is:
+
+```cpp
+// Simplified from attn_layer_bw
+grad_residual   = buffer;
+grad_input_buf  = buffer + offset1;
+grad_qkv_5d     = grad_input_buf;   // same physical region at another stage
+grad_softmax    = buffer + offset2;
+```
+
+The important part is not the exact offsets. It is that multiple logical tensors are mapped onto a smaller set of physical buffers because their lifetimes do not overlap.
+
+[Open `TransformerEncoderLayer::attn_layer_bw`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/layers/transformer_encoder_layer.cpp) and search `grad_residual_ptr`.
+
 
 The paper derives a peak requirement of approximately:
 
@@ -1531,7 +1654,7 @@ This is the software boundary where PyTorch tensor objects become low-level GPU 
 
 ---
 
-### 6.3 Encoder Forward Path
+### 6.3 Encoder Forward
 
 The C++ layer is an execution orchestrator.
 
@@ -1968,44 +2091,7 @@ That control makes cross-operation optimization possible.
 
 ---
 
----
-
-## 9. Code Map
-Use this map when you want to reconnect a paper concept to the repository.
-
-| Concept                            | Primary implementation area                                                         |
-| ---------------------------------- | ----------------------------------------------------------------------------------- |
-| PyTorch encoder wrapper            | `lightseq/training/ops/pytorch/transformer_encoder_layer.py`                        |
-| Extension build                    | `lightseq/training/ops/pytorch/builder/transformer_builder.py`                      |
-| Python ↔ C++ binding               | `lightseq/csrc/pybind/pybind_layer.cpp`                                             |
-| Encoder execution schedule         | `lightseq/csrc/layers/transformer_encoder_layer.cpp`                                |
-| Layout / transform kernels         | `lightseq/csrc/kernels/cuda/transform_kernels.cu`                                   |
-| Bias / activation / dropout fusion | `lightseq/csrc/kernels/cuda/dropout_kernels.cu`                                     |
-| Normalization kernels              | `lightseq/csrc/kernels/cuda/normalize_kernels.cu` and related include/operator code |
-| Softmax kernels                    | `lightseq/csrc/kernels/cuda/softmax_kernels.cu` and related include/operator code   |
-| Embedding kernels                  | `lightseq/csrc/kernels/cuda/embedding_kernels.cu`                                   |
-| Criterion                          | `lightseq/csrc/kernels/cuda/cross_entropy.cu` + `cross_entropy_layer.cpp`           |
-| Adam wrapper                       | `lightseq/training/ops/pytorch/adam.py`                                             |
-
-A useful way to read the code is:
-
-<Mermaid
-  chart={`flowchart TD
-    n1["paper concept"]
-    n2["C++ layer call site"]
-    n3["kernel/operator implementation"]
-    n4["thread/block behavior"]
-    n1 --> n2
-    n2 --> n3
-    n3 --> n4`}
-  caption="LightSeq2 execution flow"
-/>
-
-Do not start by reading every CUDA file from top to bottom.
-
----
-
-## 10. Sources
+## 9. Sources
 
 ### Paper
 
