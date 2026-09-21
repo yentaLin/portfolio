@@ -10,6 +10,8 @@ draft: false
 featured: false
 ---
 
+import Mermaid from '../../src/components/Mermaid.astro';
+
 These notes examine **LightSeq2**, the training-focused successor to LightSeq. The system accelerates the complete Transformer training loop—forward, backward, parameter updates, and temporary-memory management—without changing the model's core mathematics.
 
 > **Paper:** [_LightSeq2: Accelerated Training for Transformer-based Models on GPUs_](https://arxiv.org/abs/2110.05722)\
@@ -28,23 +30,24 @@ Transformer models had already become expensive to train when LightSeq2 was prop
 
 The key distinction is:
 
-```text
-Inference
-↓
-forward computation only
-
-Training
-↓
-forward
-+
-backward
-+
-gradient synchronization
-+
-parameter update
-+
-storage of activations / gradients
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["Inference"]
+    n2["forward computation only"]
+    n3["Training"]
+    n4["forward"]
+    n5["backward"]
+    n6["gradient synchronization"]
+    n7["parameter update"]
+    n8["storage of activations / gradients"]
+    n1 --> n2
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6
+    n6 --> n7
+    n7 --> n8`}
+  caption="LightSeq2 execution flow"
+/>
 
 Optimizing inference is therefore not enough. Training introduces extra computation, extra memory traffic, extra temporary tensors, and optimizer work that inference systems do not need to handle.
 
@@ -69,21 +72,23 @@ At the time of the paper, several high-performance systems focused mainly on inf
 
 A full encoder-decoder training system must handle more than an encoder block:
 
-```text
-Embedding
-↓
-Encoder layers
-↓
-Decoder self-attention
-↓
-Decoder cross-attention
-↓
-Criterion / loss
-↓
-Backward propagation
-↓
-Optimizer update
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["Embedding"]
+    n2["Encoder layers"]
+    n3["Decoder self-attention"]
+    n4["Decoder cross-attention"]
+    n5["Criterion / loss"]
+    n6["Backward propagation"]
+    n7["Optimizer update"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6
+    n6 --> n7`}
+  caption="LightSeq2 execution flow"
+/>
 
 This matters because each part creates different GPU bottlenecks.
 
@@ -104,15 +109,17 @@ LightSeq2 therefore treats Transformer training as a **system-level pipeline**, 
 
 The paper divides one data-parallel training iteration into four stages:
 
-```text
-1. Forward
-   ↓
-2. Backward
-   ↓
-3. Gradient synchronization
-   ↓
-4. Parameter update
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["1. Forward"]
+    n2["2. Backward"]
+    n3["3. Gradient synchronization"]
+    n4["4. Parameter update"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 Forward and backward are mostly compute-kernel problems.
 
@@ -134,20 +141,31 @@ temporary tensors
 
 This gives LightSeq2 three broad optimization targets:
 
-```text
-Computation
-├─ too many fine-grained kernels
-├─ inefficient non-GEMM execution
-└─ reduction dependencies
-
-Optimizer
-├─ fragmented parameter updates
-└─ expensive precision / memory movement
-
-Memory
-├─ large temporary footprint
-└─ repeated allocation / release
-```
+<Mermaid
+  chart={`flowchart LR
+    training["Transformer training bottlenecks"]
+    compute["Computation"]
+    optimizer["Optimizer"]
+    memory["Memory"]
+    kernels["Too many fine-grained kernels"]
+    nongemm["Inefficient non-GEMM execution"]
+    reductions["Reduction dependencies"]
+    fragmented["Fragmented parameter updates"]
+    precision["Expensive precision / memory movement"]
+    footprint["Large temporary footprint"]
+    allocation["Repeated allocation / release"]
+    training --> compute
+    training --> optimizer
+    training --> memory
+    compute --> kernels
+    compute --> nongemm
+    compute --> reductions
+    optimizer --> fragmented
+    optimizer --> precision
+    memory --> footprint
+    memory --> allocation`}
+  caption="Three sources of Transformer training overhead"
+/>
 
 ---
 
@@ -155,20 +173,14 @@ Memory
 
 The paper presents four technical sections, which can be understood as three larger system goals.
 
-```text
-Inefficient computation
-│
-├─ Computational Graph Optimization
-└─ Dependent Reduction Rewriting
-
-Expensive mixed-precision parameter update
-│
-└─ Accelerated Mixed-Precision Trainer
-
-High temporary memory cost
-│
-└─ Dangling-Tensor Aware Memory Manager
-```
+<Mermaid
+  chart={`flowchart LR
+    computation["Inefficient computation"] --> graphOptimization["Computational Graph Optimization"]
+    computation --> reduction["Dependent Reduction Rewriting"]
+    update["Expensive mixed-precision parameter update"] --> trainer["Accelerated Mixed-Precision Trainer"]
+    temporary["High temporary memory cost"] --> manager["Dangling-Tensor Aware Memory Manager"]`}
+  caption="LightSeq2 maps each bottleneck to a specific optimization"
+/>
 
 The important idea is that these optimizations target **different causes**.
 
@@ -206,27 +218,28 @@ From the GPU execution viewpoint, each operation may become a separate kernel.
 
 A simplified execution looks like:
 
-```text
-operation A
-↓
-launch kernel A
-↓
-read GPU memory
-↓
-compute
-↓
-write intermediate tensor
-
-operation B
-↓
-launch kernel B
-↓
-read the intermediate tensor again
-↓
-compute
-↓
-write another tensor
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["operation A"]
+    n2["launch kernel A"]
+    n3["read GPU memory"]
+    n4["compute"]
+    n5["write intermediate tensor"]
+    n6["operation B"]
+    n7["launch kernel B"]
+    n8["read the intermediate tensor again"]
+    n9["compute"]
+    n10["write another tensor"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n6 --> n7
+    n7 --> n8
+    n8 --> n9
+    n9 --> n10`}
+  caption="LightSeq2 execution flow"
+/>
 
 When each operation contains little arithmetic, launch overhead and memory traffic can become a significant part of runtime.
 
@@ -267,39 +280,44 @@ These operations are often limited by launch overhead, synchronization, or memor
 
 The LightSeq2 strategy is therefore:
 
-```text
-GEMM
-→ use highly optimized vendor library
-
-non-GEMM
-→ use Transformer-specific custom CUDA kernels
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["GEMM"]
+    n3["use highly optimized vendor library"]
+    n4["non-GEMM"]
+    n6["use Transformer-specific custom CUDA kernels"]
+    n1 --> n3
+    n4 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 This is visible in the implementation of `TransformerEncoderLayer`.
 
 The C++ layer alternates between GEMM wrappers and LightSeq kernels:
 
-```text
-LayerNorm
-↓
-QKV GEMM
-↓
-bias + layout transform
-↓
-QKᵀ GEMM
-↓
-Softmax
-↓
-Dropout
-↓
-SV GEMM
-↓
-layout transform
-↓
-output GEMM
-↓
-bias + dropout + residual
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["LayerNorm"]
+    n2["QKV GEMM"]
+    n3["bias + layout transform"]
+    n4["QKᵀ GEMM"]
+    n5["Softmax"]
+    n6["Dropout"]
+    n7["SV GEMM"]
+    n8["layout transform"]
+    n9["output GEMM"]
+    n10["bias + dropout + residual"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6
+    n6 --> n7
+    n7 --> n8
+    n8 --> n9
+    n9 --> n10`}
+  caption="LightSeq2 execution flow"
+/>
 
 The code path is implemented mainly in:
 
@@ -315,47 +333,51 @@ The code path is implemented mainly in:
 
 Consider the output of an attention projection:
 
-```text
-Linear output
-↓
-Bias Add
-↓
-Dropout
-↓
-Residual Add
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["Linear output"]
+    n2["Bias Add"]
+    n3["Dropout"]
+    n4["Residual Add"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 A generic implementation may execute these as several kernels.
 
-```text
-kernel 1: add bias
-↓
-write tensor
-
-kernel 2: dropout
-↓
-read + write tensor
-
-kernel 3: residual add
-↓
-read + write tensor
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["kernel 1: add bias"]
+    n2["write tensor"]
+    n3["kernel 2: dropout"]
+    n4["read + write tensor"]
+    n5["kernel 3: residual add"]
+    n6["read + write tensor"]
+    n1 --> n2
+    n3 --> n4
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 The arithmetic itself is simple, but the GPU repeatedly launches kernels and moves the same elements through memory.
 
 LightSeq2 instead combines compatible element-wise work into a coarse-grained custom operation:
 
-```text
-load element
-↓
-add bias
-↓
-apply dropout
-↓
-add residual
-↓
-store final element
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["load element"]
+    n2["add bias"]
+    n3["apply dropout"]
+    n4["add residual"]
+    n5["store final element"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5`}
+  caption="LightSeq2 execution flow"
+/>
 
 The mathematical result is unchanged, but intermediate global-memory traffic is reduced.
 
@@ -387,19 +409,21 @@ Multi-head attention requires Q, K, and V to be rearranged into a head-oriented 
 
 A conceptual QKV path is:
 
-```text
-input
-↓
-QKV projection
-↓
-add Q/K/V biases
-↓
-reshape
-↓
-split heads
-↓
-attention
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["input"]
+    n2["QKV projection"]
+    n3["add Q/K/V biases"]
+    n4["reshape"]
+    n5["split heads"]
+    n6["attention"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 The reshape itself contains little arithmetic, but launching separate kernels for bias addition and layout transformation creates avoidable overhead.
 
@@ -415,15 +439,15 @@ after `_qkv_linear.Forward(...)`.
 
 The exact numeric suffix describes an internal layout permutation. The useful mental model is simpler:
 
-```text
-QKV GEMM output
-↓
-one custom CUDA stage
-├─ add bias
-└─ transform memory layout for multi-head attention
-↓
-Q / K / V buffers ready for attention GEMMs
-```
+<Mermaid
+  chart={`flowchart TD
+    output["QKV GEMM output"] --> stage["One custom CUDA stage"]
+    stage --> bias["Add bias"]
+    stage --> layout["Transform layout for multi-head attention"]
+    bias --> buffers["Q / K / V buffers ready for attention GEMMs"]
+    layout --> buffers`}
+  caption="Fused QKV bias and layout transformation"
+/>
 
 The system therefore fuses work that naturally touches the same data.
 
@@ -459,46 +483,46 @@ This already reduces fragmentation at the layer representation level.
 
 During `forward()`, the Python layer invokes a custom autograd function:
 
-```text
-LSTransformerEncoderLayer.forward
-↓
-LSTransformerEncoderFunc.apply
-↓
-transformer_encoder_layer_fw_fp16 / fp32
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["LSTransformerEncoderLayer.forward"]
+    n2["LSTransformerEncoderFunc.apply"]
+    n3["transformer_encoder_layer_fw_fp16 / fp32"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 The PyTorch extension is built by `TransformerBuilder`, which includes the C++ layer files and CUDA kernel sources.
 
 The PyBind interface then converts PyTorch tensors to raw pointers and invokes the C++ layer:
 
-```text
-torch::Tensor
-↓
-data_ptr()
-↓
-TransformerEncoderLayer::Forward(...)
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["torch::Tensor"]
+    n2["data_ptr()"]
+    n3["TransformerEncoderLayer::Forward(...)"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 The C++ `TransformerEncoderLayer` then orchestrates cuBLAS GEMMs and custom CUDA kernels.
 
 The complete execution path is:
 
-```text
-PyTorch model
-↓
-LightSeq Python layer
-↓
-custom torch.autograd.Function
-↓
-PyBind C++ extension
-↓
-TransformerEncoderLayer C++
-↓
-├─ cuBLAS / cuBLASLt GEMM
-└─ LightSeq custom CUDA kernels
-↓
-GPU
-```
+<Mermaid
+  chart={`flowchart TD
+    model["PyTorch model"] --> python["LightSeq Python layer"]
+    python --> autograd["Custom torch.autograd.Function"]
+    autograd --> pybind["PyBind C++ extension"]
+    pybind --> layer["TransformerEncoderLayer C++"]
+    layer --> gemm["cuBLAS / cuBLASLt GEMM"]
+    layer --> kernels["LightSeq custom CUDA kernels"]
+    gemm --> gpu["GPU"]
+    kernels --> gpu`}
+  caption="LightSeq2 execution path from PyTorch to the GPU"
+/>
 
 A critical distinction is:
 
@@ -514,56 +538,66 @@ The custom PyTorch operator gives LightSeq control over the layer, while the C++
 
 The embedding forward pass is conceptually simple.
 
-For token index \(w\) at position \(p\):
+For token index $w$ at position $p$:
 
-\[
+$$
 y^{(w,p)} = \operatorname{Dropout}(sE_w + P_p)
-\]
+$$
 
 where:
 
-- \(E_w\) is the token embedding,
-- \(P_p\) is the positional embedding,
-- \(s\) is an embedding scale.
+- $E_w$ is the token embedding,
+- $P_p$ is the positional embedding,
+- $s$ is an embedding scale.
 
 The difficulty appears in backward.
 
 The same token may appear multiple times:
 
-```text
-position 2  → token w
-position 8  → token w
-position 15 → token w
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["position 2"]
+    n2["token w"]
+    n3["position 8"]
+    n4["token w"]
+    n5["position 15"]
+    n6["token w"]
+    n1 --> n2
+    n3 --> n4
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
-All three positions contribute to the gradient of the same row \(E_w\).
+All three positions contribute to the gradient of the same row $E_w$.
 
 Therefore:
 
-```text
-many token positions
-↓
-independent GPU threads
-↓
-several threads may update the same embedding row
-↓
-concurrent accumulation is required
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["many token positions"]
+    n2["independent GPU threads"]
+    n3["several threads may update the same embedding row"]
+    n4["concurrent accumulation is required"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 The paper uses CUDA `atomicAdd` to accumulate these sparse contributions safely.
 
 The embedding gradient can be understood as:
 
-\[
+$$
 \nabla E_w
 =
 
 s
 \sum_{i:x_i=w}
 m(i)\odot \nabla y^{(x_i,i)}
-\]
+$$
 
-where \(m(i)\) is the dropout mask.
+where $m(i)$ is the dropout mask.
 
 This is different from a dense element-wise backward pass because multiple source positions can target the same destination.
 
@@ -575,14 +609,18 @@ The corresponding CUDA implementation is included through `embedding_kernels.cu`
 
 The key implementation concept is not merely "embedding lookup" but:
 
-```text
-forward
-→ indexed gather-like computation
-
-backward
-→ sparse many-to-one gradient aggregation
-→ atomic accumulation
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["forward"]
+    n3["indexed gather-like computation"]
+    n4["backward"]
+    n6["sparse many-to-one gradient aggregation"]
+    n8["atomic accumulation"]
+    n1 --> n3
+    n4 --> n6
+    n6 --> n8`}
+  caption="LightSeq2 execution flow"
+/>
 
 ---
 
@@ -592,26 +630,26 @@ For generation tasks, the criterion may compute cross entropy with label smoothi
 
 Let:
 
-- \(h\) be decoder logits,
-- \(q=\operatorname{Softmax}(h)\),
-- \(y\) be the one-hot ground-truth vector,
-- \(\alpha\) be the label-smoothing factor.
+- $h$ be decoder logits,
+- $q=\operatorname{Softmax}(h)$,
+- $y$ be the one-hot ground-truth vector,
+- $\alpha$ be the label-smoothing factor.
 
 The smoothed target is:
 
-\[
+$$
 p=(1-\alpha)y+\frac{\alpha}{V}\mathbf{1}
-\]
+$$
 
 and the cross-entropy loss is:
 
-\[
+$$
 L(p,q)=-\sum_i p_i \log q_i
-\]
+$$
 
 After simplifying the derivative with respect to the logits, the paper obtains:
 
-\[
+$$
 \nabla h_i=
 \begin{cases}
 q_i-\frac{\alpha}{V}-1+\alpha,
@@ -619,25 +657,27 @@ q_i-\frac{\alpha}{V}-1+\alpha,
 q_i-\frac{\alpha}{V},
 & i\neq k
 \end{cases}
-\]
+$$
 
-where \(k\) is the ground-truth token index.
+where $k$ is the ground-truth token index.
 
 Why is this useful?
 
 Because after the Softmax result is available, the gradient becomes highly parallel:
 
-```text
-each vocabulary position
-↓
-read q_i
-↓
-check whether i is target
-↓
-subtract corresponding constant
-↓
-write gradient
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["each vocabulary position"]
+    n2["read q_i"]
+    n3["check whether i is target"]
+    n4["subtract corresponding constant"]
+    n5["write gradient"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5`}
+  caption="LightSeq2 execution flow"
+/>
 
 There is no need to literally evaluate the full Softmax Jacobian.
 
@@ -647,15 +687,17 @@ The PyBind layer creates a `CrossEntropyLayer`, and its forward/backward paths a
 
 The implementation structure follows:
 
-```text
-PyTorch criterion call
-↓
-CrossEntropyLayer C++
-↓
-custom CUDA kernels
-↓
-loss / log-softmax-related computation
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["PyTorch criterion call"]
+    n2["CrossEntropyLayer C++"]
+    n3["custom CUDA kernels"]
+    n4["loss / log-softmax-related computation"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 The paper also notes that its implementation works with logarithmic Softmax forms for numerical and execution efficiency.
 
@@ -665,68 +707,71 @@ The paper also notes that its implementation works with logarithmic Softmax form
 
 Cross attention introduces an optimization that is different from ordinary element-wise fusion.
 
-Suppose an encoder-decoder model contains \(n\) decoder layers.
+Suppose an encoder-decoder model contains $n$ decoder layers.
 
-Every decoder layer needs K/V projections of the same encoder output \(x\):
+Every decoder layer needs K/V projections of the same encoder output $x$:
 
-\[
+$$
 y_i^{key}=W_i^{key}x+b_i^{key}
-\]
+$$
 
-\[
+$$
 y_i^{value}=W_i^{value}x+b_i^{value}
-\]
+$$
 
 A straightforward implementation repeats a separate projection for every layer:
 
-```text
-encoder output x
-├─ GEMM for decoder layer 0 K/V
-├─ GEMM for decoder layer 1 K/V
-├─ GEMM for decoder layer 2 K/V
-└─ ...
-```
+<Mermaid
+  chart={`flowchart LR
+    encoder["Encoder output x"] --> layer0["GEMM for decoder layer 0 K/V"]
+    encoder --> layer1["GEMM for decoder layer 1 K/V"]
+    encoder --> layer2["GEMM for decoder layer 2 K/V"]
+    encoder --> more["Other decoder layers"]`}
+  caption="Repeated decoder-layer K/V projections before batching"
+/>
 
 Small GEMMs are less efficient than one larger GEMM.
 
 LightSeq2 stacks the weights:
 
-\[
+$$
 W^{key}
 =
 
 [W_0^{key};W_1^{key};\dots;W_{n-1}^{key}]
-\]
+$$
 
-\[
+$$
 W^{value}
 =
 
 [W_0^{value};W_1^{value};\dots;W_{n-1}^{value}]
-\]
+$$
 
 and computes:
 
-\[
+$$
 [y^{key};y^{value}]
 =
 
 [W^{key};W^{value}]x+[b^{key};b^{value}]
-\]
+$$
 
 The results are then split for the decoder layers.
 
 The optimization is:
 
-```text
-many layer-specific small projections
-↓
-stack weights
-↓
-one larger projection
-↓
-split output
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["many layer-specific small projections"]
+    n2["stack weights"]
+    n3["one larger projection"]
+    n4["split output"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 This improves matrix-multiplication concurrency and reduces launch overhead.
 
@@ -742,26 +787,39 @@ Element-wise fusion works well when each output element can be computed independ
 
 Example:
 
-```text
-thread 0 → element 0
-thread 1 → element 1
-thread 2 → element 2
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["thread 0"]
+    n2["element 0"]
+    n3["thread 1"]
+    n4["element 1"]
+    n5["thread 2"]
+    n6["element 2"]
+    n1 --> n2
+    n3 --> n4
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 Reduction operations are different.
 
 A reduction computes a value shared by many elements:
 
-```text
-x0
-x1
-x2
-...
-↓
-sum / max / mean
-↓
-one shared result
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["x0"]
+    n2["x1"]
+    n3["x2"]
+    n4["..."]
+    n5["sum / max / mean"]
+    n6["one shared result"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 This requires communication or synchronization among GPU threads.
 
@@ -778,24 +836,26 @@ The LightSeq2 idea is not simply "fuse more operations." It rewrites dependencie
 
 LayerNorm is:
 
-\[
+$$
 y_i
 =
 
 w_i
 \frac{x_i-\mu(x)}{\sigma(x)}
 +b_i
-\]
+$$
 
 The direct computation has a dependency:
 
-```text
-compute mean μ(x)
-↓
-use μ(x) to compute variance
-↓
-compute normalization
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["compute mean μ(x)"]
+    n2["use μ(x) to compute variance"]
+    n3["compute normalization"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 The variance step appears to require the mean first.
 
@@ -803,24 +863,24 @@ This serializes two reductions.
 
 LightSeq2 uses the identity:
 
-\[
+$$
 \sigma(x)
 =
 
 \sqrt{\mu(x^2)-\mu(x)^2}
-\]
+$$
 
 Now the two statistics can be accumulated together:
 
-```text
-same input x
-├─ reduce x
-└─ reduce x²
-       ↓
-obtain μ(x) and μ(x²)
-       ↓
-compute variance
-```
+<Mermaid
+  chart={`flowchart TD
+    input["Same input x"] --> mean["Reduce x"]
+    input --> square["Reduce x²"]
+    mean --> statistics["Obtain μ(x) and μ(x²)"]
+    square --> statistics
+    statistics --> variance["Compute variance"]`}
+  caption="LayerNorm computes two independent reductions in parallel"
+/>
 
 The dependency between the reductions disappears.
 
@@ -842,11 +902,13 @@ LightSeq2 stores half-precision values but casts to FP32 for sensitive arithmeti
 
 This is an example of a recurring systems principle:
 
-```text
-store compactly
-↓
-compute critical reductions with higher precision
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["store compactly"]
+    n2["compute critical reductions with higher precision"]
+    n1 --> n2`}
+  caption="LightSeq2 execution flow"
+/>
 
 ---
 
@@ -856,7 +918,7 @@ Backward is more complicated because each input gradient depends on reduction te
 
 The paper derives:
 
-\[
+$$
 \nabla x_i
 =
 
@@ -869,13 +931,13 @@ The paper derives:
 \hat{x}_i
 \sum_j\nabla y_jw_j\hat{x}_j
 \right)
-\]
+$$
 
 The important execution problem is that several shared sums appear.
 
 LightSeq2 rearranges the formula into:
 
-\[
+$$
 \nabla x_i
 =
 
@@ -884,25 +946,25 @@ LightSeq2 rearranges the formula into:
 \sum_j w_j\nabla y_j +
 \beta
 \sum_j w_j\nabla y_jx_j
-\]
+$$
 
 with coefficients:
 
-\[
+$$
 \alpha
 =
 
 \frac{[x_i-\mu(x)]\mu(x)-\sigma(x)^2}
 {m\sigma(x)^3}
-\]
+$$
 
-\[
+$$
 \beta
 =
 
 \frac{\mu(x)-x_i}
 {m\sigma(x)^3}
-\]
+$$
 
 The execution benefit is:
 
@@ -917,15 +979,17 @@ So the optimization is not "do less math."
 
 It is:
 
-```text
-same derivative
-↓
-algebraically reorganize dependencies
-↓
-independent reductions become visible
-↓
-GPU executes them more efficiently
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["same derivative"]
+    n2["algebraically reorganize dependencies"]
+    n3["independent reductions become visible"]
+    n4["GPU executes them more efficiently"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 That is why the paper calls this **dependent reduction rewriting**.
 
@@ -935,42 +999,44 @@ That is why the paper calls this **dependent reduction rewriting**.
 
 Attention Softmax is:
 
-\[
+$$
 y_i
 =
 
 \frac{e^{x_i}}{\sum_j e^{x_j}}
-\]
+$$
 
 A direct FP16 implementation can overflow.
 
 Stable Softmax performs:
 
-```text
-1. max reduction
-↓
-2. subtract max
-↓
-3. exp
-↓
-4. sum reduction
-↓
-5. normalize
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["1. max reduction"]
+    n2["2. subtract max"]
+    n3["3. exp"]
+    n4["4. sum reduction"]
+    n5["5. normalize"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5`}
+  caption="LightSeq2 execution flow"
+/>
 
 Formally:
 
-\[
+$$
 x' = \max_j x_j
-\]
+$$
 
-\[
+$$
 Z=\sum_j e^{x_j-x'}
-\]
+$$
 
-\[
+$$
 y_i=\frac{e^{x_i-x'}}{Z}
-\]
+$$
 
 Unlike LayerNorm, the max reduction must logically precede the exponential sum for numerical stability, so the optimization problem is not the same algebraic rewrite.
 
@@ -988,13 +1054,16 @@ The system searches before training to choose an appropriate configuration for t
 
 The mental model is:
 
-```text
-one universal Softmax kernel
-→ inefficient across very different shapes
-
-multiple templates + tunable launch configuration
-→ choose execution strategy for actual reduction size
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["one universal Softmax kernel"]
+    n3["inefficient across very different shapes"]
+    n4["multiple templates + tunable launch configuration"]
+    n6["choose execution strategy for actual reduction size"]
+    n1 --> n3
+    n4 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 This is a shape-aware GPU optimization rather than a change to the Softmax equation.
 
@@ -1010,19 +1079,20 @@ Mixed-precision training creates an additional complication.
 
 A common design is:
 
-```text
-FP16 model parameters / gradients
-↓
-forward + backward
-
-FP32 master representation
-↓
-optimizer arithmetic
-↓
-updated parameters
-↓
-FP16 model copy
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["FP16 model parameters / gradients"]
+    n2["forward + backward"]
+    n3["FP32 master representation"]
+    n4["optimizer arithmetic"]
+    n5["updated parameters"]
+    n6["FP16 model copy"]
+    n1 --> n2
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 Why maintain FP32?
 
@@ -1043,15 +1113,17 @@ g1, g2, g3, ...
 
 A straightforward update repeatedly performs:
 
-```text
-copy / convert parameter
-↓
-copy / convert gradient
-↓
-launch optimizer update
-↓
-copy result back
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["copy / convert parameter"]
+    n2["copy / convert gradient"]
+    n3["launch optimizer update"]
+    n4["copy result back"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 for many separate tensors.
 
@@ -1093,13 +1165,15 @@ The paper calls this **symbolic tensor linking** because a tensor object can ref
 
 The execution benefit is:
 
-```text
-many fragmented update targets
-↓
-one continuous address range
-↓
-larger batched optimizer operation
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["many fragmented update targets"]
+    n2["one continuous address range"]
+    n3["larger batched optimizer operation"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 The paper's pseudocode expresses the idea as:
 
@@ -1120,19 +1194,21 @@ The second trainer idea is to avoid maintaining full extra FP32 copies merely fo
 
 Instead:
 
-```text
-FP16 value in GPU memory
-↓
-load into register
-↓
-convert to FP32
-↓
-perform optimizer math in FP32
-↓
-convert updated value to FP16
-↓
-store back
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["FP16 value in GPU memory"]
+    n2["load into register"]
+    n3["convert to FP32"]
+    n4["perform optimizer math in FP32"]
+    n5["convert updated value to FP16"]
+    n6["store back"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 This changes where high precision exists.
 
@@ -1202,27 +1278,30 @@ Training cannot.
 
 Backward needs information from forward:
 
-```text
-forward activation
-↓
-saved
-↓
-later backward operator consumes it
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["forward activation"]
+    n2["saved"]
+    n3["later backward operator consumes it"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 Therefore training memory includes not only parameters but also long-lived activations and gradients.
 
 Variable sequence lengths introduce another systems problem:
 
-```text
-batch with short sequences
-↓
-small temporary tensors
-
-batch with long sequences
-↓
-larger temporary tensors
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["batch with short sequences"]
+    n2["small temporary tensors"]
+    n3["batch with long sequences"]
+    n4["larger temporary tensors"]
+    n1 --> n2
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 Dynamically allocating and releasing these buffers every iteration adds allocator overhead and can make memory behavior unstable.
 
@@ -1291,33 +1370,26 @@ The paper's Fig. 8 tracks self-attention backward.
 
 A simplified dependency chain is:
 
-```text
-∇out
-↓
-dropout / residual backward
-↓
-output-projection backward
-↓
-reshape
-↓
-attention context backward
-├─ ∇S
-└─ ∇V
-↓
-Softmax / dropout backward
-↓
-QK backward
-├─ ∇Q
-└─ ∇K
-↓
-reshape
-↓
-QKV projection backward
-↓
-LayerNorm backward
-↓
-∇in
-```
+<Mermaid
+  chart={`flowchart TD
+    output["∇out"] --> dropout["Dropout / residual backward"]
+    dropout --> projection["Output-projection backward"]
+    projection --> reshape1["Reshape"]
+    reshape1 --> context["Attention context backward"]
+    context --> ds["∇S"]
+    context --> dv["∇V"]
+    ds --> softmax["Softmax / dropout backward"]
+    dv --> softmax
+    softmax --> qk["QK backward"]
+    qk --> dq["∇Q"]
+    qk --> dk["∇K"]
+    dq --> reshape2["Reshape"]
+    dk --> reshape2
+    reshape2 --> qkv["QKV projection backward"]
+    qkv --> norm["LayerNorm backward"]
+    norm --> input["∇in"]`}
+  caption="Simplified self-attention backward dependencies"
+/>
 
 Naively allocating separate storage for every intermediate would require memory proportional to the sum of all tensor sizes.
 
@@ -1327,22 +1399,22 @@ It groups tensors into reusable blocks.
 
 The paper derives a peak requirement of approximately:
 
-\[
+$$
 3BLH + \max(3BLH, BL^2N)
-\]
+$$
 
 for the illustrated self-attention backward schedule, instead of:
 
-\[
+$$
 9BLH + BL^2N
-\]
+$$
 
 where:
 
-- \(B\): batch size,
-- \(L\): sequence length,
-- \(H\): hidden dimension,
-- \(N\): number of heads.
+- $B$: batch size,
+- $L$: sequence length,
+- $H$: hidden dimension,
+- $N$: number of heads.
 
 The exact formula matters less than the principle:
 
@@ -1366,21 +1438,23 @@ The paper describes scanning the training set to estimate an upper bound and all
 
 Then:
 
-```text
-training initialization
-↓
-allocate maximum temporary workspace
-↓
-batch 1 reuses workspace
-↓
-batch 2 reuses workspace
-↓
-batch 3 reuses workspace
-↓
-...
-↓
-release after training
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["training initialization"]
+    n2["allocate maximum temporary workspace"]
+    n3["batch 1 reuses workspace"]
+    n4["batch 2 reuses workspace"]
+    n5["batch 3 reuses workspace"]
+    n6["..."]
+    n7["release after training"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6
+    n6 --> n7`}
+  caption="LightSeq2 execution flow"
+/>
 
 This has two effects:
 
@@ -1399,17 +1473,19 @@ The code contains several explicitly shared pointers such as temporary QKV, cont
 
 The paper organizes LightSeq2 into layers:
 
-```text
-Model Zoo / framework integration
-↓
-Python API
-↓
-C++ operators
-↓
-CUDA kernels + cuBLAS
-↓
-GPU
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["Model Zoo / framework integration"]
+    n2["Python API"]
+    n3["C++ operators"]
+    n4["CUDA kernels + cuBLAS"]
+    n5["GPU"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5`}
+  caption="LightSeq2 execution flow"
+/>
 
 The repository reflects this separation.
 
@@ -1423,13 +1499,15 @@ Provides PyTorch-facing modules such as:
 
 The purpose is usability:
 
-```text
-normal PyTorch model code
-↓
-replace selected module
-↓
-use LightSeq implementation underneath
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["normal PyTorch model code"]
+    n2["replace selected module"]
+    n3["use LightSeq implementation underneath"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 #### C++ operator / layer layer
 
@@ -1516,45 +1594,49 @@ The C++ layer is an execution orchestrator.
 
 The attention section conceptually performs:
 
-```text
-(optional pre-LN)
-↓
-QKV GEMM
-↓
-bias + QKV layout transform
-↓
-QKᵀ GEMM
-↓
-Softmax
-↓
-attention dropout
-↓
-SV GEMM
-↓
-layout transform
-↓
-output GEMM
-↓
-bias + dropout + residual
-↓
-(optional post-LN)
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["(optional pre-LN)"]
+    n2["QKV GEMM"]
+    n3["bias + QKV layout transform"]
+    n4["QKᵀ GEMM"]
+    n5["Softmax"]
+    n6["attention dropout"]
+    n7["SV GEMM"]
+    n8["layout transform"]
+    n9["output GEMM"]
+    n10["bias + dropout + residual"]
+    n11["(optional post-LN)"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6
+    n6 --> n7
+    n7 --> n8
+    n8 --> n9
+    n9 --> n10
+    n10 --> n11`}
+  caption="LightSeq2 execution flow"
+/>
 
 The FFN performs:
 
-```text
-(optional pre-LN)
-↓
-FFN GEMM 1
-↓
-bias + activation + dropout
-↓
-FFN GEMM 2
-↓
-bias + dropout + residual
-↓
-(optional post-LN)
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["(optional pre-LN)"]
+    n2["FFN GEMM 1"]
+    n3["bias + activation + dropout"]
+    n4["FFN GEMM 2"]
+    n5["bias + dropout + residual"]
+    n6["(optional post-LN)"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 This is almost a direct code-level realization of the paper's optimized computational graph.
 
@@ -1568,20 +1650,28 @@ A standard deep-learning framework sees reusable generic operators.
 
 LightSeq2 instead creates a larger Transformer-aware execution unit.
 
-```text
-Generic framework view
-LayerNorm
-Linear
-Bias
-Dropout
-Residual
-...
-
-LightSeq2 view
-Transformer layer with known execution pattern
-↓
-choose optimized GEMM + fused CUDA schedule
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["Generic framework view"]
+    n2["LayerNorm"]
+    n3["Linear"]
+    n4["Bias"]
+    n5["Dropout"]
+    n6["Residual"]
+    n7["..."]
+    n8["LightSeq2 view"]
+    n9["Transformer layer with known execution pattern"]
+    n10["choose optimized GEMM + fused CUDA schedule"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5
+    n5 --> n6
+    n6 --> n7
+    n8 --> n9
+    n9 --> n10`}
+  caption="LightSeq2 execution flow"
+/>
 
 This larger abstraction enables optimization across boundaries that would otherwise look like independent operators.
 
@@ -1639,13 +1729,15 @@ The paper observes larger benefits on A100 than V100 in several configurations.
 
 A useful interpretation is:
 
-```text
-faster GPU compute
-↓
-small-kernel / memory overhead becomes relatively more visible
-↓
-system optimizations matter more
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["faster GPU compute"]
+    n2["small-kernel / memory overhead becomes relatively more visible"]
+    n3["system optimizations matter more"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 The speedup also changes with batch size.
 
@@ -1661,15 +1753,17 @@ ViT contains a relatively simple encoder graph.
 
 As batch size grows:
 
-```text
-larger GEMMs
-↓
-GPU matrix multiply becomes more dominant
-↓
-fraction of time optimized by LightSeq2 decreases
-↓
-relative speedup decreases
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["larger GEMMs"]
+    n2["GPU matrix multiply becomes more dominant"]
+    n3["fraction of time optimized by LightSeq2 decreases"]
+    n4["relative speedup decreases"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 This result is important because it shows a limitation of kernel-fusion systems:
 
@@ -1724,13 +1818,16 @@ The benefit becomes smaller when the problem is so large that basic memory bandw
 
 This fits the fusion model:
 
-```text
-small / medium non-GEMM workload
-→ overhead reduction matters strongly
-
-very large element-wise workload
-→ memory bandwidth becomes dominant
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["small / medium non-GEMM workload"]
+    n3["overhead reduction matters strongly"]
+    n4["very large element-wise workload"]
+    n6["memory bandwidth becomes dominant"]
+    n1 --> n3
+    n4 --> n6`}
+  caption="LightSeq2 execution flow"
+/>
 
 #### Optimizer
 
@@ -1756,11 +1853,13 @@ At small/medium batch sizes, kernel overhead can be a large fraction.
 
 As batch size grows:
 
-```text
-GEMM fraction ↑
-↓
-kernel-fusion relative contribution ↓
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["GEMM fraction ↑"]
+    n2["kernel-fusion relative contribution ↓"]
+    n1 --> n2`}
+  caption="LightSeq2 execution flow"
+/>
 
 The trainer still contributes independently.
 
@@ -1776,21 +1875,25 @@ The shape of the memory trace is also important.
 
 Fairseq:
 
-```text
-sequence lengths vary
-↓
-memory demand changes
-↓
-additional allocations appear over time
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["sequence lengths vary"]
+    n2["memory demand changes"]
+    n3["additional allocations appear over time"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 LightSeq2:
 
-```text
-maximum workspace allocated in advance
-↓
-stable memory footprint during training
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["maximum workspace allocated in advance"]
+    n2["stable memory footprint during training"]
+    n1 --> n2`}
+  caption="LightSeq2 execution flow"
+/>
 
 This directly supports the preallocation + reuse design.
 
@@ -1806,17 +1909,18 @@ The authors attribute this partly to frequent allocation/release and fragmented 
 
 The conceptual connection is:
 
-```text
-more allocator / launch overhead
-↓
-more gaps where GPU is not doing useful model arithmetic
-
-reuse + coarser kernels
-↓
-fewer gaps
-↓
-higher utilization
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["more allocator / launch overhead"]
+    n2["more gaps where GPU is not doing useful model arithmetic"]
+    n3["reuse + coarser kernels"]
+    n4["fewer gaps"]
+    n5["higher utilization"]
+    n1 --> n2
+    n3 --> n4
+    n4 --> n5`}
+  caption="LightSeq2 execution flow"
+/>
 
 GPU utilization itself is not the objective; it is evidence that the GPU spends less time stalled by software overhead.
 
@@ -1830,13 +1934,15 @@ Therefore, LightSeq2 mainly optimizes local computation rather than communicatio
 
 As the number of GPUs or model size grows:
 
-```text
-communication fraction ↑
-↓
-local compute optimization becomes a smaller fraction of total time
-↓
-relative speedup decreases
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["communication fraction ↑"]
+    n2["local compute optimization becomes a smaller fraction of total time"]
+    n3["relative speedup decreases"]
+    n1 --> n2
+    n2 --> n3`}
+  caption="LightSeq2 execution flow"
+/>
 
 This explains why speedup falls as distributed synchronization becomes more important.
 
@@ -1856,17 +1962,19 @@ It does not rely on lowering model accuracy as the central strategy.
 
 Instead it changes execution:
 
-```text
-same mathematical graph
-↓
-better kernel boundaries
-+
-better reductions
-+
-better precision/data movement
-+
-better buffer reuse
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["same mathematical graph"]
+    n2["better kernel boundaries"]
+    n3["better reductions"]
+    n4["better precision/data movement"]
+    n5["better buffer reuse"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4
+    n4 --> n5`}
+  caption="LightSeq2 execution flow"
+/>
 
 This is why LightSeq2 is best understood as a **systems optimization paper**.
 
@@ -1880,19 +1988,22 @@ That misses most of the contribution.
 
 A better decomposition is:
 
-```text
-Fine-grained element-wise overhead
-→ fusion
-
-Reduction dependency
-→ algebraic / shape-aware rewriting
-
-Optimizer memory traffic
-→ continuous workspaces + on-the-fly conversion
-
-Temporary tensor footprint
-→ liveness-aware memory reuse
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["Fine-grained element-wise overhead"]
+    n3["fusion"]
+    n4["Reduction dependency"]
+    n6["algebraic / shape-aware rewriting"]
+    n7["Optimizer memory traffic"]
+    n9["continuous workspaces + on-the-fly conversion"]
+    n10["Temporary tensor footprint"]
+    n12["liveness-aware memory reuse"]
+    n1 --> n3
+    n4 --> n6
+    n7 --> n9
+    n10 --> n12`}
+  caption="LightSeq2 execution flow"
+/>
 
 Each bottleneck requires a different mechanism.
 
@@ -1918,47 +2029,24 @@ That control makes cross-operation optimization possible.
 
 The entire paper can be reconstructed from one chain.
 
-```text
-Transformer training is expensive
-↓
-training has more work than inference
-(forward + backward + optimizer + memory)
-↓
-generic frameworks execute many Transformer operations inefficiently
-
-Three system bottlenecks
-│
-├─ computation
-│   ├─ many small non-GEMM kernels
-│   └─ dependent reductions
-│
-├─ optimizer
-│   └─ fragmented mixed-precision update + memory traffic
-│
-└─ memory
-    └─ many temporary tensors with non-overlapping lifetimes
-
-LightSeq2
-│
-├─ fuse compatible non-GEMM operations
-│
-├─ rewrite / specialize LayerNorm and Softmax reductions
-│
-├─ batch parameter storage and convert FP16↔FP32 on the fly
-│
-└─ preallocate and reuse temporary buffers according to lifetime
-↓
-fewer launches
-+
-less global-memory traffic
-+
-better reduction parallelism
-+
-lower peak memory
-↓
-higher Transformer training throughput
-without changing the core training algorithm
-```
+<Mermaid
+  chart={`flowchart TD
+    cost["Transformer training is expensive"] --> work["Training adds backward, synchronization, optimizer, and activation storage"]
+    work --> overhead["Generic frameworks execute many Transformer operations inefficiently"]
+    overhead --> computation["Computation bottlenecks"]
+    overhead --> optimizer["Optimizer bottlenecks"]
+    overhead --> memory["Memory bottlenecks"]
+    computation --> fusion["Fuse compatible non-GEMM operations"]
+    computation --> reductions["Rewrite and specialize reductions"]
+    optimizer --> conversion["Batch parameters and convert FP16 / FP32 on the fly"]
+    memory --> reuse["Preallocate and reuse buffers by tensor lifetime"]
+    fusion --> result["Fewer launches and less memory traffic"]
+    reductions --> result
+    conversion --> result
+    reuse --> result
+    result --> throughput["Higher training throughput with unchanged core mathematics"]`}
+  caption="Complete LightSeq2 mental model"
+/>
 
 $$
 \boxed{
@@ -1988,15 +2076,17 @@ Use this map when you want to reconnect a paper concept to the repository.
 
 A useful way to read the code is:
 
-```text
-paper concept
-↓
-C++ layer call site
-↓
-kernel/operator implementation
-↓
-thread/block behavior
-```
+<Mermaid
+  chart={`flowchart TD
+    n1["paper concept"]
+    n2["C++ layer call site"]
+    n3["kernel/operator implementation"]
+    n4["thread/block behavior"]
+    n1 --> n2
+    n2 --> n3
+    n3 --> n4`}
+  caption="LightSeq2 execution flow"
+/>
 
 Do not start by reading every CUDA file from top to bottom.
 
