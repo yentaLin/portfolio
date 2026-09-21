@@ -1258,38 +1258,6 @@ Layer 2 gets another region
 
 ---
 
-### Final Takeaway
-
-```text
-Dynamic shapes
-        ↓
-repeated allocation problem
-        ↓
-maximum-shape pre-allocation
-```
-
-plus:
-
-```text
-Short-lived intermediate tensors
-        ↓
-non-overlapping lifetimes
-        ↓
-reuse physical storage
-```
-
-$$
-\boxed{
-\text{Dynamic GPU Memory Reuse}
-=
-\text{maximum-shape pre-allocation}
-+
-\text{lifetime-based storage reuse}
-}
-$$
-
----
-
 ## 5. Experiments
 
 The experiments mainly verify two things:
