@@ -1,14 +1,28 @@
-# LightSeq2 — Accelerated Training for Transformer-based Models on GPUs
+---
+title: LightSeq2 — Accelerated Transformer Training on GPUs
+description: Reading notes on how LightSeq2 accelerates end-to-end Transformer training through kernel fusion, reduction rewriting, mixed-precision updates, and memory reuse.
+# Date added to this site; not the original paper publication date.
+date: 2026-09-21
+updated: 2026-09-21
+tags: [LLM Systems, Paper Notes, GPU, Training, LightSeq2]
+category: Paper Notes
+draft: false
+featured: false
+---
 
-> Paper: **LightSeq2: Accelerated Training for Transformer-based Models on GPUs**  
-> Repository: **ByteDance LightSeq**  
-> Focus of these notes: understand **why LightSeq2 is needed, how each optimization changes GPU execution, and where the idea appears in the implementation**.
+These notes examine **LightSeq2**, the training-focused successor to LightSeq. The system accelerates the complete Transformer training loop—forward, backward, parameter updates, and temporary-memory management—without changing the model's core mathematics.
+
+> **Paper:** [_LightSeq2: Accelerated Training for Transformer-based Models on GPUs_](https://arxiv.org/abs/2110.05722)\
+> **Repository:** [ByteDance LightSeq](https://github.com/bytedance/lightseq)\
+> **Core idea:** Treat Transformer training as one GPU execution system, then remove overhead from computation, mixed-precision updates, and tensor lifetimes together.
+
+The focus is to understand **why LightSeq2 is needed, how each optimization changes GPU execution, and where the idea appears in the implementation**.
 
 ---
 
-# 1. Overview
+## 1. Overview
 
-## 1.1 What problem is LightSeq2 trying to solve?
+### 1.1 What problem is LightSeq2 trying to solve?
 
 Transformer models had already become expensive to train when LightSeq2 was proposed. The paper's central observation is that training cost grows quickly with model size, while existing acceleration systems did not optimize the **complete Transformer training process**.
 
@@ -49,7 +63,7 @@ $$
 
 ---
 
-## 1.2 Why were existing systems insufficient?
+### 1.2 Why were existing systems insufficient?
 
 At the time of the paper, several high-performance systems focused mainly on inference. Other training systems optimized only part of the Transformer stack.
 
@@ -86,7 +100,7 @@ LightSeq2 therefore treats Transformer training as a **system-level pipeline**, 
 
 ---
 
-## 1.3 Where does training time go?
+### 1.3 Where does training time go?
 
 The paper divides one data-parallel training iteration into four stages:
 
@@ -137,7 +151,7 @@ Memory
 
 ---
 
-## 1.4 LightSeq2's main design
+### 1.4 LightSeq2's main design
 
 The paper presents four technical sections, which can be understood as three larger system goals.
 
@@ -168,9 +182,9 @@ Each one attacks a different part of the training pipeline.
 
 ---
 
-# 2. Computational Graph Optimization
+## 2. Computational Graph Optimization
 
-## 2.1 Why can a Transformer graph be inefficient on a GPU?
+### 2.1 Why can a Transformer graph be inefficient on a GPU?
 
 A high-level framework expresses a Transformer as many operations:
 
@@ -220,11 +234,11 @@ This is especially important for Transformer training because the graph contains
 
 ---
 
-## 2.2 GEMM vs. non-GEMM operations
+### 2.2 GEMM vs. non-GEMM operations
 
 LightSeq2 separates Transformer computation into two broad classes.
 
-### GEMM
+#### GEMM
 
 General matrix multiplication appears in:
 
@@ -238,7 +252,7 @@ Modern GPU libraries already contain highly optimized GEMM implementations.
 
 LightSeq2 therefore uses **cuBLAS / cuBLASLt** for these operations rather than reimplementing matrix multiplication from scratch.
 
-### Non-GEMM
+#### Non-GEMM
 
 Examples include:
 
@@ -297,7 +311,7 @@ The code path is implemented mainly in:
 
 ---
 
-## 2.3 Operation fusion
+### 2.3 Operation fusion
 
 Consider the output of an attention projection:
 
@@ -345,7 +359,7 @@ store final element
 
 The mathematical result is unchanged, but intermediate global-memory traffic is reduced.
 
-### Code mapping
+#### Code mapping
 
 In the encoder implementation, attention output eventually reaches a call equivalent to:
 
@@ -367,7 +381,7 @@ The model still performs the same bias, dropout, and residual operations. The di
 
 ---
 
-## 2.4 QKV bias + layout transformation
+### 2.4 QKV bias + layout transformation
 
 Multi-head attention requires Q, K, and V to be rearranged into a head-oriented layout.
 
@@ -415,7 +429,7 @@ The system therefore fuses work that naturally touches the same data.
 
 ---
 
-## 2.5 Transformer encoder execution in the code
+### 2.5 Transformer encoder execution in the code
 
 The public PyTorch API still looks like a normal layer:
 
@@ -496,7 +510,7 @@ The custom PyTorch operator gives LightSeq control over the layer, while the C++
 
 ---
 
-## 2.6 Embedding layer: why backward is special
+### 2.6 Embedding layer: why backward is special
 
 The embedding forward pass is conceptually simple.
 
@@ -543,6 +557,7 @@ The embedding gradient can be understood as:
 \[
 \nabla E_w
 =
+
 s
 \sum_{i:x_i=w}
 m(i)\odot \nabla y^{(x_i,i)}
@@ -552,7 +567,7 @@ where \(m(i)\) is the dropout mask.
 
 This is different from a dense element-wise backward pass because multiple source positions can target the same destination.
 
-### Code mapping
+#### Code mapping
 
 The PyBind interface exposes separate embedding forward and backward entry points and passes token indices plus gradient buffers into `TransformerEmbeddingLayer`.
 
@@ -571,7 +586,7 @@ backward
 
 ---
 
-## 2.7 Criterion layer: simplifying label-smoothed cross entropy
+### 2.7 Criterion layer: simplifying label-smoothed cross entropy
 
 For generation tasks, the criterion may compute cross entropy with label smoothing.
 
@@ -626,7 +641,7 @@ write gradient
 
 There is no need to literally evaluate the full Softmax Jacobian.
 
-### Code mapping
+#### Code mapping
 
 The PyBind layer creates a `CrossEntropyLayer`, and its forward/backward paths are implemented by the C++ layer plus `cross_entropy.cu`.
 
@@ -646,7 +661,7 @@ The paper also notes that its implementation works with logarithmic Softmax form
 
 ---
 
-## 2.8 Layer-batched cross attention
+### 2.8 Layer-batched cross attention
 
 Cross attention introduces an optimization that is different from ordinary element-wise fusion.
 
@@ -679,12 +694,14 @@ LightSeq2 stacks the weights:
 \[
 W^{key}
 =
+
 [W_0^{key};W_1^{key};\dots;W_{n-1}^{key}]
 \]
 
 \[
 W^{value}
 =
+
 [W_0^{value};W_1^{value};\dots;W_{n-1}^{value}]
 \]
 
@@ -693,6 +710,7 @@ and computes:
 \[
 [y^{key};y^{value}]
 =
+
 [W^{key};W^{value}]x+[b^{key};b^{value}]
 \]
 
@@ -716,9 +734,9 @@ This is called **layer-batched** because the batching happens across decoder lay
 
 ---
 
-# 3. Dependent Reduction Rewriting
+## 3. Dependent Reduction Rewriting
 
-## 3.1 Why reduction operations need a different strategy
+### 3.1 Why reduction operations need a different strategy
 
 Element-wise fusion works well when each output element can be computed independently.
 
@@ -756,13 +774,14 @@ The LightSeq2 idea is not simply "fuse more operations." It rewrites dependencie
 
 ---
 
-# 3.2 LayerNorm forward
+### 3.2 LayerNorm forward
 
 LayerNorm is:
 
 \[
 y_i
 =
+
 w_i
 \frac{x_i-\mu(x)}{\sigma(x)}
 +b_i
@@ -787,6 +806,7 @@ LightSeq2 uses the identity:
 \[
 \sigma(x)
 =
+
 \sqrt{\mu(x^2)-\mu(x)^2}
 \]
 
@@ -814,7 +834,7 @@ E[x^2]-E[x]^2
 }
 $$
 
-### Precision
+#### Precision
 
 The paper emphasizes that LayerNorm is precision-sensitive.
 
@@ -830,7 +850,7 @@ compute critical reductions with higher precision
 
 ---
 
-# 3.3 LayerNorm backward
+### 3.3 LayerNorm backward
 
 Backward is more complicated because each input gradient depends on reduction terms over the whole normalized vector.
 
@@ -839,12 +859,13 @@ The paper derives:
 \[
 \nabla x_i
 =
+
 \frac{w_i\nabla y_i}{\sigma(x)}
 -
+
 \frac{1}{m\sigma(x)}
 \left(
-\sum_j\nabla y_j w_j
-+
+\sum_j\nabla y_j w_j +
 \hat{x}_i
 \sum_j\nabla y_jw_j\hat{x}_j
 \right)
@@ -857,11 +878,10 @@ LightSeq2 rearranges the formula into:
 \[
 \nabla x_i
 =
-\frac{w_i\nabla y_i}{\sigma(x)}
-+
+
+\frac{w_i\nabla y_i}{\sigma(x)} +
 \alpha
-\sum_j w_j\nabla y_j
-+
+\sum_j w_j\nabla y_j +
 \beta
 \sum_j w_j\nabla y_jx_j
 \]
@@ -871,6 +891,7 @@ with coefficients:
 \[
 \alpha
 =
+
 \frac{[x_i-\mu(x)]\mu(x)-\sigma(x)^2}
 {m\sigma(x)^3}
 \]
@@ -878,6 +899,7 @@ with coefficients:
 \[
 \beta
 =
+
 \frac{\mu(x)-x_i}
 {m\sigma(x)^3}
 \]
@@ -909,13 +931,14 @@ That is why the paper calls this **dependent reduction rewriting**.
 
 ---
 
-# 3.4 Softmax
+### 3.4 Softmax
 
 Attention Softmax is:
 
 \[
 y_i
 =
+
 \frac{e^{x_i}}{\sum_j e^{x_j}}
 \]
 
@@ -977,9 +1000,9 @@ This is a shape-aware GPU optimization rather than a change to the Softmax equat
 
 ---
 
-# 4. Accelerated Mixed-Precision Trainer
+## 4. Accelerated Mixed-Precision Trainer
 
-## 4.1 Why can the optimizer be expensive?
+### 4.1 Why can the optimizer be expensive?
 
 Forward and backward receive most of the attention in deep-learning optimization, but the paper measures parameter update as a significant fraction of training time.
 
@@ -1009,7 +1032,7 @@ So the accuracy requirement creates extra memory movement.
 
 ---
 
-## 4.2 The straightforward mixed-precision update
+### 4.2 The straightforward mixed-precision update
 
 A fragmented model may contain many parameter tensors:
 
@@ -1041,7 +1064,7 @@ The bottleneck is not only Adam arithmetic. It is also the system cost of managi
 
 ---
 
-## 4.3 Symbolic tensor linking
+### 4.3 Symbolic tensor linking
 
 LightSeq2's paper design first places parameters and gradients into continuous workspaces.
 
@@ -1091,7 +1114,7 @@ That layer-level flat parameter layout is not identical to the paper's whole-tra
 
 ---
 
-## 4.4 On-the-fly conversion
+### 4.4 On-the-fly conversion
 
 The second trainer idea is to avoid maintaining full extra FP32 copies merely for the update path.
 
@@ -1145,7 +1168,7 @@ The important distinction is that **reduced storage precision does not mean redu
 
 ---
 
-## 4.5 Code mapping and an important repository caveat
+### 4.5 Code mapping and an important repository caveat
 
 The public repository exposes `LSAdam`, which loads a LightSeq CUDA extension through `AdamBuilder` and calls a fused CUDA Adam routine.
 
@@ -1169,9 +1192,9 @@ This distinction is important when reading systems papers: the paper and the lat
 
 ---
 
-# 5. Dangling-Tensor Aware Memory Manager
+## 5. Dangling-Tensor Aware Memory Manager
 
-## 5.1 Why training memory is different from inference memory
+### 5.1 Why training memory is different from inference memory
 
 Inference can often release intermediate tensors quickly after they are consumed.
 
@@ -1205,11 +1228,11 @@ Dynamically allocating and releasing these buffers every iteration adds allocato
 
 ---
 
-## 5.2 Permanent vs. temporary memory
+### 5.2 Permanent vs. temporary memory
 
 LightSeq2 conceptually divides memory into:
 
-### Permanent memory
+#### Permanent memory
 
 Lives for most or all of training:
 
@@ -1217,7 +1240,7 @@ Lives for most or all of training:
 - gradients,
 - persistent optimizer state.
 
-### Temporary memory
+#### Temporary memory
 
 Needed only during parts of forward/backward:
 
@@ -1230,7 +1253,7 @@ The key opportunity is that temporary tensors have different lifetimes.
 
 ---
 
-## 5.3 Tensor lifetime and dangling tensors
+### 5.3 Tensor lifetime and dangling tensors
 
 Suppose:
 
@@ -1262,7 +1285,7 @@ This is exactly the same logic as compiler liveness-based register allocation, a
 
 ---
 
-## 5.4 Self-attention backward example
+### 5.4 Self-attention backward example
 
 The paper's Fig. 8 tracks self-attention backward.
 
@@ -1335,7 +1358,7 @@ maximum simultaneously-live storage
 
 ---
 
-## 5.5 Preallocation
+### 5.5 Preallocation
 
 LightSeq2 also avoids repeated allocation/release calls.
 
@@ -1370,9 +1393,9 @@ The code contains several explicitly shared pointers such as temporary QKV, cont
 
 ---
 
-# 6. LightSeq2 Software Architecture
+## 6. LightSeq2 Software Architecture
 
-## 6.1 The software stack
+### 6.1 The software stack
 
 The paper organizes LightSeq2 into layers:
 
@@ -1390,7 +1413,7 @@ GPU
 
 The repository reflects this separation.
 
-### Python API
+#### Python API
 
 Provides PyTorch-facing modules such as:
 
@@ -1408,7 +1431,7 @@ replace selected module
 use LightSeq implementation underneath
 ```
 
-### C++ operator / layer layer
+#### C++ operator / layer layer
 
 Owns Transformer-specific execution structure.
 
@@ -1421,11 +1444,11 @@ It decides when to call:
 - layout transforms,
 - residual fusion.
 
-### CUDA kernel layer
+#### CUDA kernel layer
 
 Implements custom non-GEMM operations.
 
-### cuBLAS / cuBLASLt
+#### cuBLAS / cuBLASLt
 
 Handles matrix multiplications.
 
@@ -1439,7 +1462,7 @@ hand-optimized Transformer-specific kernels
 
 ---
 
-## 6.2 How the PyTorch layer reaches C++
+### 6.2 How the PyTorch layer reaches C++
 
 The encoder Python file loads the compiled extension through `TransformerBuilder`.
 
@@ -1487,7 +1510,7 @@ This is the software boundary where PyTorch tensor objects become low-level GPU 
 
 ---
 
-## 6.3 Inside `TransformerEncoderLayer::Forward`
+### 6.3 Inside `TransformerEncoderLayer::Forward`
 
 The C++ layer is an execution orchestrator.
 
@@ -1539,7 +1562,7 @@ The C++ layer has enough structural knowledge to select specialized operations w
 
 ---
 
-## 6.4 Why this abstraction matters
+### 6.4 Why this abstraction matters
 
 A standard deep-learning framework sees reusable generic operators.
 
@@ -1564,13 +1587,13 @@ This larger abstraction enables optimization across boundaries that would otherw
 
 ---
 
-# 7. Experiments and Evidence
+## 7. Experiments and Evidence
 
 The experiments are not just a collection of benchmark numbers. Each one is evidence for a different design claim.
 
 ---
 
-## 7.1 End-to-end speedup
+### 7.1 End-to-end speedup
 
 The paper evaluates:
 
@@ -1602,7 +1625,7 @@ This supports the claim that the system is not optimized for only one BERT-style
 
 ---
 
-## 7.2 Full Transformer results
+### 7.2 Full Transformer results
 
 For machine translation, LightSeq2 is evaluated against Fairseq and Fairseq+Apex.
 
@@ -1632,7 +1655,7 @@ Because LightSeq2 mainly improves the non-GEMM and system overhead around GEMM, 
 
 ---
 
-## 7.3 ViT
+### 7.3 ViT
 
 ViT contains a relatively simple encoder graph.
 
@@ -1654,7 +1677,7 @@ This result is important because it shows a limitation of kernel-fusion systems:
 
 ---
 
-## 7.4 BERT and GPT-2
+### 7.4 BERT and GPT-2
 
 BERT tests encoder-only performance.
 
@@ -1671,7 +1694,7 @@ The key conclusion is architectural coverage, not a single absolute number.
 
 ---
 
-# 7.5 Operator-level evidence
+### 7.5 Operator-level evidence
 
 The paper separately benchmarks:
 
@@ -1683,19 +1706,19 @@ The paper separately benchmarks:
 
 This is important because end-to-end speedup alone cannot explain which mechanism works.
 
-### LayerNorm
+#### LayerNorm
 
 LightSeq2 obtains strong speedup across many tested tensor shapes.
 
 This supports the dependent-reduction rewriting strategy.
 
-### Softmax
+#### Softmax
 
 The speedup grows for some larger reduction shapes.
 
 This supports shape-specific reduction templates and tuning.
 
-### Dropout
+#### Dropout
 
 The benefit becomes smaller when the problem is so large that basic memory bandwidth dominates, but LightSeq2 remains faster in the reported range.
 
@@ -1709,7 +1732,7 @@ very large element-wise workload
 → memory bandwidth becomes dominant
 ```
 
-### Optimizer
+#### Optimizer
 
 The paper reports approximately consistent speedup for Adam and SGD relative to Apex across model sizes.
 
@@ -1717,7 +1740,7 @@ This supports the idea that the trainer optimization attacks a cost that scales 
 
 ---
 
-# 7.6 Optimization breakdown
+### 7.6 Optimization breakdown
 
 The paper compares:
 
@@ -1745,7 +1768,7 @@ The full system combines both.
 
 ---
 
-# 7.7 Memory evidence
+### 7.7 Memory evidence
 
 For Transformer-Base and Transformer-Big on one V100, the paper reports that Fairseq consumes about 6 GB more memory than LightSeq2 in the shown experiments.
 
@@ -1773,7 +1796,7 @@ This directly supports the preallocation + reuse design.
 
 ---
 
-# 7.8 GPU utilization
+### 7.8 GPU utilization
 
 The paper shows LightSeq2 maintaining very high GPU utilization in the tested machine-translation runs.
 
@@ -1799,7 +1822,7 @@ GPU utilization itself is not the objective; it is evidence that the GPU spends 
 
 ---
 
-# 7.9 Scalability
+### 7.9 Scalability
 
 LightSeq2 uses the same general all-reduce synchronization strategy as PyTorch in the paper's distributed experiments.
 
@@ -1821,9 +1844,9 @@ The paper explicitly treats communication optimization as orthogonal future work
 
 ---
 
-# 8. What LightSeq2 Changes — and What It Does Not
+## 8. What LightSeq2 Changes — and What It Does Not
 
-## 8.1 LightSeq2 does not redesign Transformer mathematics
+### 8.1 LightSeq2 does not redesign Transformer mathematics
 
 It does not replace self-attention with a sparse or linear-attention approximation.
 
@@ -1849,7 +1872,7 @@ This is why LightSeq2 is best understood as a **systems optimization paper**.
 
 ---
 
-## 8.2 LightSeq2 is not only operation fusion
+### 8.2 LightSeq2 is not only operation fusion
 
 It is tempting to summarize the paper as "fuse CUDA kernels."
 
@@ -1875,7 +1898,7 @@ Each bottleneck requires a different mechanism.
 
 ---
 
-## 8.3 LightSeq2 is not "one giant Transformer kernel"
+### 8.3 LightSeq2 is not "one giant Transformer kernel"
 
 The PyTorch interface may expose an entire Transformer layer as one custom autograd function, but internally the layer still launches several operations.
 
@@ -1891,7 +1914,7 @@ That control makes cross-operation optimization possible.
 
 ---
 
-# 9. Complete Mental Model
+## 9. Complete Mental Model
 
 The entire paper can be reconstructed from one chain.
 
@@ -1945,23 +1968,23 @@ $$
 
 ---
 
-# 10. Code Map for Future Review
+## 10. Code Map for Future Review
 
 Use this map when you want to reconnect a paper concept to the repository.
 
-| Concept | Primary implementation area |
-|---|---|
-| PyTorch encoder wrapper | `lightseq/training/ops/pytorch/transformer_encoder_layer.py` |
-| Extension build | `lightseq/training/ops/pytorch/builder/transformer_builder.py` |
-| Python ↔ C++ binding | `lightseq/csrc/pybind/pybind_layer.cpp` |
-| Encoder execution schedule | `lightseq/csrc/layers/transformer_encoder_layer.cpp` |
-| Layout / transform kernels | `lightseq/csrc/kernels/cuda/transform_kernels.cu` |
-| Bias / activation / dropout fusion | `lightseq/csrc/kernels/cuda/dropout_kernels.cu` |
-| Normalization kernels | `lightseq/csrc/kernels/cuda/normalize_kernels.cu` and related include/operator code |
-| Softmax kernels | `lightseq/csrc/kernels/cuda/softmax_kernels.cu` and related include/operator code |
-| Embedding kernels | `lightseq/csrc/kernels/cuda/embedding_kernels.cu` |
-| Criterion | `lightseq/csrc/kernels/cuda/cross_entropy.cu` + `cross_entropy_layer.cpp` |
-| Adam wrapper | `lightseq/training/ops/pytorch/adam.py` |
+| Concept                            | Primary implementation area                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------- |
+| PyTorch encoder wrapper            | `lightseq/training/ops/pytorch/transformer_encoder_layer.py`                        |
+| Extension build                    | `lightseq/training/ops/pytorch/builder/transformer_builder.py`                      |
+| Python ↔ C++ binding               | `lightseq/csrc/pybind/pybind_layer.cpp`                                             |
+| Encoder execution schedule         | `lightseq/csrc/layers/transformer_encoder_layer.cpp`                                |
+| Layout / transform kernels         | `lightseq/csrc/kernels/cuda/transform_kernels.cu`                                   |
+| Bias / activation / dropout fusion | `lightseq/csrc/kernels/cuda/dropout_kernels.cu`                                     |
+| Normalization kernels              | `lightseq/csrc/kernels/cuda/normalize_kernels.cu` and related include/operator code |
+| Softmax kernels                    | `lightseq/csrc/kernels/cuda/softmax_kernels.cu` and related include/operator code   |
+| Embedding kernels                  | `lightseq/csrc/kernels/cuda/embedding_kernels.cu`                                   |
+| Criterion                          | `lightseq/csrc/kernels/cuda/cross_entropy.cu` + `cross_entropy_layer.cpp`           |
+| Adam wrapper                       | `lightseq/training/ops/pytorch/adam.py`                                             |
 
 A useful way to read the code is:
 
@@ -1979,9 +2002,9 @@ Do not start by reading every CUDA file from top to bottom.
 
 ---
 
-# 11. Source Notes
+## 11. Source Notes
 
-## Paper
+### Paper
 
 **LightSeq2: Accelerated Training for Transformer-based Models on GPUs**  
 Xiaohui Wang, Yang Wei, Ying Xiong, Guyue Huang, Xian Qian, Yufei Ding, Mingxuan Wang, Lei Li.
@@ -1997,7 +2020,7 @@ Key paper sections used in these notes:
 - Section V: Software Architecture
 - Section VI: Experiments
 
-## Repository
+### Repository
 
 The ByteDance LightSeq repository was later extended beyond the exact version described in the paper, including later INT8 training/inference support. Therefore code comments in these notes distinguish:
 
@@ -2005,12 +2028,14 @@ The ByteDance LightSeq repository was later extended beyond the exact version de
 - **behavior directly visible in the archived public repository**.
 
 Repository:
-- https://github.com/bytedance/lightseq
+
+- [ByteDance LightSeq](https://github.com/bytedance/lightseq)
 
 Important source files:
-- https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/transformer_encoder_layer.py
-- https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/builder/transformer_builder.py
-- https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/pybind/pybind_layer.cpp
-- https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/layers/transformer_encoder_layer.cpp
-- https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/dropout_kernels.cu
-- https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/adam.py
+
+- [`transformer_encoder_layer.py`](https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/transformer_encoder_layer.py)
+- [`transformer_builder.py`](https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/builder/transformer_builder.py)
+- [`pybind_layer.cpp`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/pybind/pybind_layer.cpp)
+- [`transformer_encoder_layer.cpp`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/layers/transformer_encoder_layer.cpp)
+- [`dropout_kernels.cu`](https://github.com/bytedance/lightseq/blob/master/lightseq/csrc/kernels/cuda/dropout_kernels.cu)
+- [`adam.py`](https://github.com/bytedance/lightseq/blob/master/lightseq/training/ops/pytorch/adam.py)
