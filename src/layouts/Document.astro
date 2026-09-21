@@ -11,9 +11,19 @@ interface Props {
   headings: { depth: number; slug: string; text: string }[];
   date?: Date;
   updated?: Date;
+  pdfHref?: string;
 }
-const { title, description, kind, meta, tags, headings, date, updated } =
-  Astro.props;
+const {
+  title,
+  description,
+  kind,
+  meta,
+  tags,
+  headings,
+  date,
+  updated,
+  pdfHref,
+} = Astro.props;
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
 
@@ -34,6 +44,11 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     <h1>{title}</h1>
     <p class="document-description">{description}</p>
     <p class="document-meta mono">{meta}</p>
+    {pdfHref && (
+      <a class="pdf-download" href={pdfHref} download={`${title}.pdf`}>
+        Download PDF ↓
+      </a>
+    )}
     <div class="tags">
       {tags.map((tag) =>
         kind === 'writing' ? (

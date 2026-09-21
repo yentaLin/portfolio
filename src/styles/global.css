@@ -1271,3 +1271,104 @@ p {
     transition: none !important;
   }
 }
+
+.pdf-download {
+  display: inline-block;
+  margin-top: 18px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.pdf-download:hover {
+  background: var(--soft);
+}
+
+@media print {
+  :root,
+  :root[data-theme='dark'] {
+    --bg: #fff;
+    --text: #202b3c;
+    --muted: #5d6b7e;
+    --accent: #315da8;
+    --line: #dce2eb;
+    --soft: #e9eef6;
+    color-scheme: light;
+    background: #fff;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .site-header,
+  .site-footer,
+  .skip-link,
+  .back-link,
+  .pdf-download,
+  .toc,
+  .document-end,
+  .heading-anchor {
+    display: none !important;
+  }
+  .shell,
+  .document-heading {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+  .document-heading {
+    padding: 0 0 20px;
+  }
+  .document-heading h1 {
+    font-size: 26pt;
+  }
+  .document-layout {
+    display: block;
+    padding-top: 20px;
+  }
+  .document-body {
+    font-size: 10pt;
+    line-height: 1.7;
+  }
+  .document-body h2 {
+    font-size: 18pt;
+    margin-top: 28px;
+  }
+  .document-body h3 {
+    font-size: 13pt;
+    margin-top: 22px;
+  }
+  .document-body :is(h2, h3, h4) {
+    break-after: avoid;
+  }
+  .document-body p {
+    orphans: 3;
+    widows: 3;
+  }
+  .document-body pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: visible;
+    font-size: 8pt;
+    padding: 12px;
+  }
+  .document-body table {
+    display: table;
+    table-layout: fixed;
+    font-size: 8pt;
+  }
+  .document-body :is(th, td) {
+    min-width: 0;
+    padding: 7px;
+  }
+  .document-body :is(tr, figure, img) {
+    break-inside: avoid;
+  }
+  .document-body img {
+    max-height: 230mm;
+    object-fit: contain;
+  }
+  .document-body .katex-display {
+    overflow: visible;
+    font-size: 0.9em;
+  }
+}
